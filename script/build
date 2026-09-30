@@ -22,6 +22,8 @@ cp -R "$ROOT/App/Shell/zsh" "$APP/Contents/Resources/zsh"
 # the `kana` helper command (kana-cli in Package.swift, see the note there)
 mkdir -p "$APP/Contents/Resources/bin"
 cp "$BIN_DIR/kana-cli" "$APP/Contents/Resources/bin/kana"
+# the app icon (tools/icon/make_icon.sh rebuilds it)
+cp "$ROOT/Resources/icon/Kana.icns" "$APP/Contents/Resources/Kana.icns"
 for dir in skins themes; do
     if [ -d "$ROOT/Resources/$dir" ]; then
         cp -R "$ROOT/Resources/$dir" "$APP/Contents/Resources/$dir"
@@ -38,6 +40,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>Kana</string>
     <key>CFBundleIdentifier</key><string>dev.kana.Kana</string>
     <key>CFBundleExecutable</key><string>Kana</string>
+    <key>CFBundleIconFile</key><string>Kana</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key><string>1</string>

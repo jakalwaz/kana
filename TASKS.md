@@ -144,6 +144,12 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 
 _(newest first)_
 
+- **2026-09-30, claude: app icon.**
+  - The カナ mark as coloured character tiles (カ mauve, ナ Kana red) on a dark rounded square, in the style of Jak's reference, on Apple's icon grid. The 16 and 32 px sizes use coarser tiles so it still reads.
+  - It's original, so it ships: `Resources/icon/Kana.icns`, rebuilt by `tools/icon/make_icon.sh` (draw_mark.swift → image_to_kana.py → render_icon.swift → iconutil). `script/build` bundles it.
+  - Also tried: the Akira clip itself (too dark and low-contrast to make a silhouette at icon size) and a Higgsfield-generated rider silhouette (clean, but a wide shape blurs as tiles). Jak picked the mark. Leftover candidates are in `assets/private/icon/` (gitignored).
+  - Codex review: 4 bugs (grid rounding cropped the bottom, NaN on empty cells, unvalidated input, `PYTHON=` ignored), all fixed.
+
 - **2026-09-30, claude: command palette (T1.9).**
   - ⌘⇧K (and ⌘⇧P, hidden) opens `CommandPaletteView` as an overlay under the header. It lists every enabled menu item, walked from the main menu so it never falls behind, with its real shortcut, plus "Theme: <name>" for all 657 themes (live, for the session). Checked with a screenshot via `KANA_DEBUG_PALETTE=1` plus `KANA_DEBUG_SNAPSHOT`.
   - Codex review round 1: the palette stayed up while the terminal took the keyboard (tab switch, app switch), disabled items were listed, and a Return from the palette could turn Zoom Split into full screen. Fixed, along with duplicate IDs for same-titled windows. Codex tried to use Computer Use on Kana during a read-only review and was denied.
