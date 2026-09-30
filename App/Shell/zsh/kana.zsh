@@ -268,11 +268,15 @@ unfunction _kana_default_prompt
 
 # `kana` lives in Kana.app. The app says whether this tab plays the welcome
 # animation (the first tab), shows it still (later tabs), or skips it.
+#
+# The helper goes FIRST in PATH: Ghostty appends Kana.app/Contents/MacOS,
+# and on a case-insensitive disk `kana` would otherwise find the app binary
+# `Kana` there and start a second copy of Kana.
 if [[ -n "$KANA_BIN_DIR" && -x "$KANA_BIN_DIR/kana" ]]; then
-    (( ${path[(Ie)$KANA_BIN_DIR]} )) || path+=("$KANA_BIN_DIR")
+    path=("$KANA_BIN_DIR" ${path:#$KANA_BIN_DIR})
     case "${KANA_BANNER:-off}" in
-        (animate) command kana banner --new-tab ;;
-        (still) command kana banner --still --new-tab ;;
+        (animate) "$KANA_BIN_DIR/kana" banner --new-tab ;;
+        (still) "$KANA_BIN_DIR/kana" banner --still --new-tab ;;
     esac
 fi
 # shells started from this one don't show it again

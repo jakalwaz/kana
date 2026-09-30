@@ -127,17 +127,97 @@ func restoreTerminal() {
     write("\u{1B}[0m\u{1B}[?25h")
 }
 
-/// Waits up to `ms` for a key. Returns true (and swallows the input) if one came.
+/// Waits up to `ms` for a key. Returns true (and swallows the input) if one
+/// came. The terminal's own replies (a late cursor report, focus in/out) are
+/// swallowed too but don't count: they used to cut the animation short.
 func keyPressed(within ms: Int32) -> Bool {
     guard rawMode else { usleep(useconds_t(max(0, ms)) * 1000); return false }
+    let deadline = Date().addingTimeInterval(Double(max(0, ms)) / 1000)
+    var input = [UInt8]()
+    // when a sequence was cut off mid-way: it gets 50 ms, in total, to finish
+    var pendingUntil: Date?
+    while true {
+        if stdinClosed {
+            usleep(useconds_t(max(0, deadline.timeIntervalSinceNow) * 1_000_000))
+            return false
+        }
+        let until = pendingUntil ?? deadline
+        guard let bytes = readAvailable(waiting: Int32(max(0, until.timeIntervalSinceNow * 1000))) else {
+            return pendingUntil != nil // ran out: the leftover Esc was a key press
+        }
+        input += bytes
+        switch classify(input) {
+        case .key:
+            return true
+        case .replies:
+            input.removeAll()
+            pendingUntil = nil
+        case .incomplete:
+            if pendingUntil == nil { pendingUntil = Date().addingTimeInterval(0.05) }
+            if Date() >= pendingUntil! { return true }
+        }
+    }
+}
+
+/// Set when stdin hangs up, so waiting doesn't spin on it.
+nonisolated(unsafe) var stdinClosed = false
+
+/// Whatever is waiting on stdin, after up to `ms` for the first byte.
+func readAvailable(waiting ms: Int32) -> [UInt8]? {
     var fds = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
-    guard poll(&fds, 1, ms) > 0 else { return false }
-    var buffer = [UInt8](repeating: 0, count: 64)
+    guard poll(&fds, 1, ms) > 0 else { return nil }
+    var input = [UInt8]()
+    var buffer = [UInt8](repeating: 0, count: 256)
     repeat {
-        _ = read(STDIN_FILENO, &buffer, buffer.count)
+        let n = read(STDIN_FILENO, &buffer, buffer.count)
+        if n <= 0 {
+            if input.isEmpty { stdinClosed = true; return nil }
+            break
+        }
+        input += buffer[0 ..< n]
         fds.revents = 0
-    } while poll(&fds, 1, 0) > 0
-    return true
+    } while input.count < 4096 && poll(&fds, 1, 5) > 0
+    return input
+}
+
+enum InputKind: Equatable { case key, replies, incomplete }
+
+/// Terminal replies are ESC sequences the terminal sends on its own: CSI
+/// ending in R (cursor), n (status), c (device attributes), I / O (focus),
+/// t (window), y (mode report), `CSI ? … u` (keyboard flags; a plain
+/// `CSI … u` is a key in the kitty protocol), and OSC / DCS strings.
+/// Anything else is a key.
+func classify(_ bytes: [UInt8]) -> InputKind {
+    let esc: UInt8 = 0x1B
+    var i = 0
+    while i < bytes.count {
+        guard bytes[i] == esc else { return .key }
+        guard i + 1 < bytes.count else { return .incomplete }
+        switch bytes[i + 1] {
+        case UInt8(ascii: "["):
+            // parameter bytes, then intermediates, then the final byte;
+            // anything out of that order (a typed key mid-reply) is a key
+            var j = i + 2
+            while j < bytes.count, (0x30 ... 0x3F).contains(bytes[j]) { j += 1 }
+            while j < bytes.count, (0x20 ... 0x2F).contains(bytes[j]) { j += 1 }
+            guard j < bytes.count else { return .incomplete }
+            guard (0x40 ... 0x7E).contains(bytes[j]) else { return .key }
+            let final = bytes[j]
+            let privateParams = i + 2 < j && bytes[i + 2] == UInt8(ascii: "?")
+            let reply = "RncIOty".utf8.contains(final) || (final == UInt8(ascii: "u") && privateParams)
+            guard reply else { return .key }
+            i = j + 1
+        case UInt8(ascii: "]"), UInt8(ascii: "P"):
+            // ends with BEL or ESC \
+            var j = i + 2
+            while j < bytes.count, bytes[j] != 0x07, !(bytes[j] == esc && j + 1 < bytes.count && bytes[j + 1] == UInt8(ascii: "\\")) { j += 1 }
+            guard j < bytes.count else { return .incomplete }
+            i = j + (bytes[j] == 0x07 ? 1 : 2)
+        default:
+            return .key // Alt+letter, or Esc followed by a key
+        }
+    }
+    return .replies
 }
 
 /// Asks the terminal where the cursor is (DSR). 1-based row, or nil.

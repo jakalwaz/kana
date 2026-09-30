@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.mainMenu = makeMenu()
+        quitCleanlyOnSIGTERM()
         Notifier.shared.start()
         Notifier.shared.onOpen = { [weak self] paneID in
             guard let self, windows.contains(where: { $0.reveal(paneID: paneID) }) else { return }
@@ -51,6 +52,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool { true }
+
+    /// `pkill Kana` (script/run does it) quits like ⌘Q, not like a crash.
+    private var termSource: DispatchSourceSignal?
+    private func quitCleanlyOnSIGTERM() {
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { NSApp.terminate(nil) }
+        source.resume()
+        termSource = source
+    }
 
     private var skin: SkinInfo? { SkinManager.find(settings: settings) }
 
@@ -286,6 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 enum KanaMain {
     static func main() {
+        handOffToHelperIfCalledAsCLI()
         MainActor.assumeIsolated {
             let app = NSApplication.shared
             let delegate = AppDelegate()
@@ -293,5 +305,26 @@ enum KanaMain {
             app.delegate = delegate
             withExtendedLifetime(delegate) { app.run() }
         }
+    }
+
+    /// `kana banner` / `kana keys` meant the helper in Contents/Resources/bin.
+    /// If a shell found this binary instead (macOS disks ignore case, and
+    /// Ghostty puts Contents/MacOS in PATH), run the helper rather than
+    /// opening a second Kana.
+    private static func handOffToHelperIfCalledAsCLI() {
+        let args = CommandLine.arguments
+        guard args.count > 1, ["banner", "keys", "help", "version", "--still"].contains(args[1]) else { return }
+        // a CLI call never opens a window, even when the helper is missing
+        guard let helper = Bundle.main.resourceURL?.appendingPathComponent("bin/kana").path,
+              FileManager.default.isExecutableFile(atPath: helper)
+        else {
+            FileHandle.standardError.write(Data("kana: the helper isn't in this Kana.app (Contents/Resources/bin/kana)\n".utf8))
+            exit(1)
+        }
+        var argv: [UnsafeMutablePointer<CChar>?] = ([helper] + args.dropFirst()).map { strdup($0) }
+        argv.append(nil)
+        execv(helper, argv)
+        perror("kana: couldn't start the helper")
+        exit(1)
     }
 }

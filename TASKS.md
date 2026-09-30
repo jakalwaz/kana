@@ -144,6 +144,12 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 
 _(newest first)_
 
+- **2026-09-30, claude: startup fixes (Jak's report: two windows, animation sometimes missing, a "reopen windows?" prompt).**
+  - Two windows: Ghostty appends Kana.app/Contents/MacOS to PATH, and macOS disks ignore case, so the welcome screen's `kana banner` ran the app binary `Kana` and opened a second Kana (seen with ps/sample). kana.zsh now puts the helper first and calls it by full path, and the app binary hands `kana <command>` calls to the helper (or exits) instead of opening a window.
+  - Animation skipped: any input counted as a key, including the terminal's own late replies (the cursor report `clearLoginLine` asks for, focus in/out). `classify()` now tells replies from keys, waits up to 50 ms for a split sequence, and checks CSI byte order. Tested in a pty: split replies play the full 2.5 s; Esc, kitty Esc, space and a key typed mid-reply still skip.
+  - The "reopen windows?" prompt came after `pkill` (script/run, and screenshot tests). Windows aren't macOS-restorable now, and SIGTERM quits like ⌘Q. Launched twice: one window, one process, a clean quit.
+  - Codex review in two rounds (a fragmented reply, a kitty-encoded Esc, a failed hand-off opening a window, an EOF spin, a key inside a reply, an unbounded wait), all fixed.
+
 - **2026-09-30, claude: app icon.**
   - The カナ mark as coloured character tiles (カ mauve, ナ Kana red) on a dark rounded square, in the style of Jak's reference, on Apple's icon grid. The 16 and 32 px sizes use coarser tiles so it still reads.
   - It's original, so it ships: `Resources/icon/Kana.icns`, rebuilt by `tools/icon/make_icon.sh` (draw_mark.swift → image_to_kana.py → render_icon.swift → iconutil). `script/build` bundles it.

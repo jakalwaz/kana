@@ -81,6 +81,9 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         window.minSize = NSSize(width: 480, height: 300)
         window.title = "Kana"
         window.tabbingMode = .disallowed
+        // Kana keeps its own sessions (⌘⇧O); macOS's restore would only ask
+        // "reopen windows?" after a crash and bring back empty ones
+        window.isRestorable = false
         window.collectionBehavior.insert(.fullScreenPrimary)
         super.init(window: window)
         window.delegate = self
