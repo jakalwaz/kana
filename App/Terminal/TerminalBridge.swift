@@ -61,8 +61,9 @@ enum TerminalBridge {
             "super+t", "super+n", "super+w", "super+alt+w", "super+shift+w", "super+shift+alt+w",
             "super+shift+[", "super+shift+]", "super+d", "super+shift+d", "super+[", "super+]",
             "super+shift+f", "super+alt+p", "super+alt+i", "super+ctrl+f", "super+enter",
-            // super+shift+enter stays ghostty's (split zoom, a no-op for now):
-            // unbound, AppKit would match it to the menu's ⌘↩
+            // splits: zoom, equalize, move between them
+            "super+shift+enter", "super+ctrl+=",
+            "super+alt+arrow_up", "super+alt+arrow_down", "super+alt+arrow_left", "super+alt+arrow_right",
         ]
         for i in 1 ... 9 { keys += ["super+\(i)", "super+digit_\(i)"] }
         return keys
@@ -102,6 +103,7 @@ final class TerminalSession: NSObject {
     let paneID = UUID().uuidString
 
     var onTitleChange: ((String) -> Void)?
+    var onFocusChange: ((Bool) -> Void)?
     var onWorkingDirectoryChange: ((String) -> Void)?
     /// The surface is closing. `processAlive` means something other than an
     /// idle shell is still running, so the host should confirm first.
@@ -178,6 +180,7 @@ extension TerminalSession:
     TerminalSurfaceTitleDelegate,
     TerminalSurfacePwdDelegate,
     TerminalSurfaceCloseDelegate,
+    TerminalSurfaceFocusDelegate,
     TerminalSurfaceClipboardConfirmationDelegate
 {
     func terminalDidChangeTitle(_ title: String) {
@@ -186,6 +189,10 @@ extension TerminalSession:
 
     func terminalDidChangeWorkingDirectory(_ path: String) {
         onWorkingDirectoryChange?(path)
+    }
+
+    func terminalDidChangeFocus(_ focused: Bool) {
+        onFocusChange?(focused)
     }
 
     func terminalDidClose(processAlive: Bool) {

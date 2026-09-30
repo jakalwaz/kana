@@ -375,7 +375,11 @@ worktree-root = ../{repo}-kana
 | ⌘T | New tab |
 | ⌘D / ⌘⇧D | Split right / down |
 | ⌘⌥ arrows | Move between panes |
+| ⌘[ / ⌘] | Previous / next pane |
 | ⌘⇧Enter | Zoom pane |
+| ⌃⌘= | Equalize panes (or double-click a divider) |
+| ⌘W / ⌥⌘W | Close pane / close tab |
+| ⌘Enter | Full screen |
 | ⌘⇧K | Command palette |
 | ⌘⇧H | History search |
 | ⌘⇧P | Profiles |

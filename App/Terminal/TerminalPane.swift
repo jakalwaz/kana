@@ -1,13 +1,19 @@
 import AppKit
 
-/// One tab's content: a terminal. The welcome screen is printed by the shell
-/// itself (`kana banner`), so it lives in the scrollback like any output.
+/// One terminal: a leaf in a tab's split tree. The welcome screen is printed
+/// by the shell itself (`kana banner`), so it lives in the scrollback like
+/// any output.
 @MainActor
 final class TerminalPane: NSView {
     let session: TerminalSession
 
     var title = "zsh"
     var workingDirectory: String?
+
+    /// Unfocused splits sit behind a dark veil, like Ghostty's
+    /// `unfocused-split-opacity` (0.7).
+    var isDimmed = false { didSet { veil.isHidden = !isDimmed } }
+    private let veil = PassthroughView()
 
     init(settings: KanaSettings, skin: SkinInfo?, banner: TerminalSession.Banner, workingDirectory: String?) {
         session = TerminalSession(settings: settings, skin: skin, banner: banner, workingDirectory: workingDirectory)
@@ -16,6 +22,10 @@ final class TerminalPane: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         addSubview(session.view)
+        veil.wantsLayer = true
+        veil.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.3).cgColor
+        veil.isHidden = true
+        addSubview(veil)
     }
 
     @available(*, unavailable)
@@ -29,5 +39,11 @@ final class TerminalPane: NSView {
     override func layout() {
         super.layout()
         session.view.frame = bounds
+        veil.frame = bounds
     }
+}
+
+/// Draws but never takes clicks, so they reach the terminal underneath.
+final class PassthroughView: NSView {
+    override func hitTest(_: NSPoint) -> NSView? { nil }
 }

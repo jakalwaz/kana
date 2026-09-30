@@ -20,9 +20,17 @@ let package = Package(
             dependencies: [
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "KanaSkins", package: "KanaSkins"),
+                "KanaCore",
             ],
             path: "App",
             resources: [.copy("Shell/zsh")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        // Pure logic the app uses (split layout, config, fuzzy matching): no
+        // AppKit, no libghostty, so it's unit tested.
+        .target(
+            name: "KanaCore",
+            path: "Core",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // The welcome screen, shared by the `kana` command and its tests.
@@ -38,6 +46,11 @@ let package = Package(
             name: "kana-cli",
             dependencies: ["KanaBanner", .product(name: "KanaSkins", package: "KanaSkins")],
             path: "CLI/kana"
+        ),
+        .testTarget(
+            name: "KanaCoreTests",
+            dependencies: ["KanaCore"],
+            path: "Tests/KanaCoreTests"
         ),
         .testTarget(
             name: "KanaBannerTests",

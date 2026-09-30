@@ -69,14 +69,14 @@ public struct Banner {
 
     static let keys = Section(title: "Keys", items: [
         ("⌘T", "new tab"),
-        ("⌘W", "close tab"),
-        ("⌘N", "new window"),
+        ("⌘D", "split right"),
+        ("⌘⇧D", "split down"),
         ("⌘1…9", "go to tab"),
-        ("⌘⇧[ ]", "prev / next"),
+        ("⌘⌥←→", "move split"),
+        ("⌘⇧↩", "zoom split"),
+        ("⌘W", "close"),
         ("⌘⇧F", "focus mode"),
-        ("⌘K", "clear"),
         ("⌘↑ ↓", "prompts"),
-        ("⌘+ −", "text size"),
     ])
 
     static let suggestions = Section(title: "Suggestions", items: [

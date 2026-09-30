@@ -1,4 +1,5 @@
 import AppKit
+import KanaCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -64,7 +65,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         active.newTab()
     }
 
+    @objc func close(_: Any?) { active?.closeFocused() }
     @objc func closeTab(_: Any?) { active?.closeCurrentTab() }
+    @objc func splitRight(_: Any?) { active?.split(.right) }
+    @objc func splitDown(_: Any?) { active?.split(.down) }
+    @objc func focusSplit(_ sender: NSMenuItem) {
+        let directions: [SplitFocus] = [.previous, .next, .up, .down, .left, .right]
+        if directions.indices.contains(sender.tag) { active?.moveFocus(directions[sender.tag]) }
+    }
+    /// ⇧⌘↩ zooms. AppKit ignores Shift when matching Return, so this item
+    /// also catches ⌘↩, which is Ghostty's full screen.
+    @objc func toggleSplitZoom(_: Any?) {
+        if let event = NSApp.currentEvent, event.type == .keyDown, event.keyCode == 36,
+           !event.modifierFlags.contains(.shift)
+        {
+            active?.window?.toggleFullScreen(nil)
+        } else {
+            active?.toggleZoom()
+        }
+    }
+    @objc func equalizeSplits(_: Any?) { active?.equalizeSplits() }
     @objc func nextTab(_: Any?) { active?.selectNext() }
     @objc func previousTab(_: Any?) { active?.selectPrevious() }
     @objc func selectTab(_ sender: NSMenuItem) { active?.select(sender.tag) }
@@ -85,12 +105,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
             item.keyEquivalentModifierMask = mods
             item.target = target
-            return item
-        }
-        /// Ghostty's second shortcut for an action: works, but isn't listed.
-        func hidden(_ item: NSMenuItem) -> NSMenuItem {
-            item.isHidden = true
-            item.allowsKeyEquivalentWhenHidden = true
             return item
         }
         func submenu(_ title: String, _ items: [NSMenuItem]) {
@@ -116,8 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("New Window", #selector(newWindow(_:)), "n", target: self),
             item("New Tab", #selector(newTab(_:)), "t", target: self),
             .separator(),
-            item("Close Tab", #selector(closeTab(_:)), "w", target: self),
-            hidden(item("Close Tab", #selector(closeTab(_:)), "w", [.command, .option], target: self)),
+            item("Close", #selector(close(_:)), "w", target: self),
+            item("Close Tab", #selector(closeTab(_:)), "w", [.command, .option], target: self),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]),
             .separator(),
             item("Next Tab", #selector(nextTab(_:)), "]", [.command, .shift], target: self),
@@ -131,6 +145,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         submenu("Shell", shell)
 
+        func arrow(_ key: Int) -> String { String(Character(UnicodeScalar(key)!)) }
+        var splitItems = [
+            item("Split Right", #selector(splitRight(_:)), "d", target: self),
+            item("Split Down", #selector(splitDown(_:)), "d", [.command, .shift], target: self),
+            .separator(),
+        ]
+        let moves: [(String, String, NSEvent.ModifierFlags)] = [
+            ("Previous Split", "[", .command),
+            ("Next Split", "]", .command),
+            ("Split Above", arrow(NSUpArrowFunctionKey), [.command, .option]),
+            ("Split Below", arrow(NSDownArrowFunctionKey), [.command, .option]),
+            ("Split on the Left", arrow(NSLeftArrowFunctionKey), [.command, .option]),
+            ("Split on the Right", arrow(NSRightArrowFunctionKey), [.command, .option]),
+        ]
+        for (i, move) in moves.enumerated() {
+            let focus = item(move.0, #selector(focusSplit(_:)), move.1, move.2, target: self)
+            focus.tag = i
+            splitItems.append(focus)
+        }
+        splitItems += [
+            .separator(),
+            item("Zoom Split", #selector(toggleSplitZoom(_:)), "\r", [.command, .shift], target: self),
+            item("Equalize Splits", #selector(equalizeSplits(_:)), "=", [.command, .control], target: self),
+        ]
+        submenu("Split", splitItems)
+
         submenu("Edit", [
             item("Copy", #selector(NSText.copy(_:)), "c"),
             item("Paste", #selector(NSText.paste(_:)), "v"),
@@ -141,7 +181,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Focus Mode", #selector(toggleFocusMode(_:)), "f", [.command, .shift], target: self),
             .separator(),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
-            hidden(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "\r")),
         ])
 
         submenu("Window", [

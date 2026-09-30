@@ -57,6 +57,18 @@ public enum SkinLoader {
 
 Rules: validate that every frame has `height` rows of exactly `width` characters (count Characters, not UTF-8 bytes, because the `blocks` and `dots` ramps use multi-byte characters) and that `colors` decodes to `width * height * 3` bytes. Clamp `portrait` into range. Throw `malformed` with a useful message otherwise.
 
+### C2: SplitTree (KanaCore)
+
+The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The API is the stub in that file** (types, signatures and the doc comment on each function are the contract). T1.1 fills in the bodies; T1.2 codes against the signatures. In short:
+
+- `SplitTree<Leaf: AnyObject>` with `root: Node?`, `zoomed: Leaf?`. `Node` is `.leaf(Leaf)` or `.split(Split { axis, ratio, first, second })`.
+- `leaves`, `contains`, `inserting(_:at:side:)`, `removing`, `toggledZoom`, `equalized`, `resizing(_:ratio:)`, `focusTarget(from:_:in:)`, `layout(in:divider:) -> SplitLayout`.
+- Leaves are compared by identity. Coordinates are flipped (y down), and `first` of a vertical split is the top. Ratios are clamped to 0.1...0.9.
+
+### C3: KanaConfig (KanaCore)
+
+`~/.config/kana/config` parsing, and rendering it into the Ghostty config file the app loads. **The API is the stub in `Core/KanaConfig.swift`** (signatures plus doc comments). Kana's own keys (`skin`, `intro`, `banner`, `suggestions`, `notify-on-command-finish[-after]`, `quick-terminal-hotkey`, `theme`) are parsed into fields. Every other line passes to Ghostty unchanged and in order. `renderGhostty` writes Kana's defaults, then the user's lines, then the resolved theme, then Kana's enforced lines last.
+
 ---
 
 ## Phase 0: Engine spike
@@ -74,6 +86,21 @@ Rules: validate that every frame has `height` rows of exactly `width` characters
 | T0.9 | Confirm before closing a window or quitting while something is running (Ghostty's `needs_confirm_quit`). Tab close already confirms | claude | `App/Window/*`, `App/KanaApp.swift` | T0.4 | blocked: libghostty-spm keeps the surface handle internal, see Decisions |
 
 **Phase 0 done when:** nvim, htop and Claude Code run in Kana with no visual glitches (Jak checks), KanaSkins tests pass, and `script/test` runs everything.
+
+
+## Phase 1: daily driver (plan: splits first, then config + themes, notifications + links, find, quick terminal, palette)
+
+| ID | Task | Owner | Files | Depends on | Status |
+|---|---|---|---|---|---|
+| T1.1 | SplitTree per contract C2, ported from Ghostty's SplitTree.swift, with Swift Testing tests for every operation | codex | `Core/SplitTree.swift`, `Tests/KanaCoreTests/**` | none | done |
+| T1.2 | Splits in the window: SplitContainerView, a split tree per tab, ⌘D / ⌘⇧D, ⌘⌥arrows, ⌘[ ], ⌘⇧↩ zoom, ⌃⌘= equalize, drag dividers, ⌘W closes a split, dim unfocused | claude | `App/Window/*`, `App/Terminal/*`, `App/KanaApp.swift`, `Package.swift` | T1.1 contract | review (needs Jak's checklist) |
+| T1.3 | KanaConfig: Kana keys vs Ghostty passthrough, render one Ghostty config file; vendor themes | codex | `Core/KanaConfig.swift`, `Tests/KanaCoreTests/**`, `tools/themes/**`, `Resources/themes/**` | C3 | todo |
+| T1.4 | Config wiring: controller from the rendered file, `theme =`, ⌘⇧, reload, error banner | claude | `App/Terminal/*`, `App/KanaSettings.swift`, `script/build` | T1.3 | todo |
+| T1.5 | Notifications (command finished, OSC 9/777, bell), tab attention dot + dock badge, progress bar, ⌘-click URLs + hover preview | claude | `App/Notify/*`, `App/Terminal/*`, `App/Window/*` | T1.2 | todo |
+| T1.6 | Find in scrollback: ⌘F bar, ⌘G / ⇧⌘G, ⌘E | claude | `App/Window/*`, `App/Terminal/*` | T1.2 | todo |
+| T1.7 | Quick terminal: global hotkey drop-down panel | claude | `App/Window/*`, `App/KanaApp.swift` | T1.2 | todo |
+| T1.8 | FuzzyMatch + CommandPaletteView (SwiftUI) per C4 | codex | `Core/FuzzyMatch.swift`, `App/Palette/**`, `Tests/KanaCoreTests/**` | C4 (to write) | todo |
+| T1.9 | Palette commands for every action, theme switching, ⌘⇧K / ⌘⇧P | claude | `App/KanaApp.swift`, `App/Window/*` | T1.8 | todo |
 
 ## Side quest: intro assets (Jak)
 
@@ -112,6 +139,12 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, codex + claude: splits (T1.1, T1.2).**
+  - T1.1 (codex): `Core/SplitTree.swift` in a new `KanaCore` target, ported from Ghostty's SplitTree. 22 Swift Testing tests. Round 1 fixed spatial focus: it skipped a nearer split because it ranked overlap above distance, and the contract wording caused it.
+  - T1.2 (claude): a split tree per tab, `SplitContainerView` with draggable dividers (double-click evens them out), the Split menu, and dimmed unfocused splits. Based on Ghostty's Features/Splits and BaseTerminalController.
+  - ⌘W closes a split; the last split closes the tab. Closing a tab asks once about every busy split (codex round-1 bug); a late busy answer joins the open sheet (round-2 risk, fixed after the limit).
+  - AppKit ignores Shift when matching Return, checked with a probe. So one menu item takes both ⇧⌘↩ (zoom) and ⌘↩ (full screen) and checks the event.
 
 - **2026-09-30, claude: fixes from Codex's review of the bridge and window code.**
   - Codex reviewed T0.1 to T0.4 and P2.2 against `../ghostty-pinned` and found 7 bugs and 1 risk. All were real and all are fixed; the fixes took two review rounds and ended clean.
