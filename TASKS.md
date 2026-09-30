@@ -69,8 +69,8 @@ Rules: validate that every frame has `height` rows of exactly `width` characters
 | T0.4 | Input, resize, scroll, copy and paste working like Ghostty | claude | `App/Terminal/*`, `App/Window/*` | T0.3 | review (needs Jak's checklist) |
 | T0.5 | `script/build`, `script/test`, `script/run`: build with SwiftPM into `build/Kana.app`, run Swift, zsh and Python tests, launch the app | codex → claude | `script/*` | none | review |
 | T0.6 | KanaSkins package per contract C1, with unit tests covering good files, stills, bad JSON, wrong row width, wrong color length, portrait clamping | codex → claude | `Packages/KanaSkins/**` | none | review |
-| T0.7 | pytest suite for `convert.py`: generate a synthetic clip and image in a temp dir, check convert, portrait options, crop, no-color, and error cases | codex | `tools/ascii/tests/**` | none | todo |
-| T0.8 | Original default skin: `tools/ascii/make_default_skin.py` draws a simple original animation (a red light streak sliding in and coming to rest, no copyrighted imagery) straight to frames, and writes `Resources/skins/default/intro.kana`, `portrait.kana` and `skin.json` | codex | `tools/ascii/make_default_skin.py`, `Resources/skins/default/**` | none | todo |
+| T0.7 | pytest suite for `convert.py`: generate a synthetic clip and image in a temp dir, check convert, portrait options, crop, no-color, and error cases | codex | `tools/ascii/tests/**` | none | done |
+| T0.8 | Original default skin: `tools/ascii/make_default_skin.py` draws a simple original animation (a red light streak sliding in and coming to rest, no copyrighted imagery) straight to frames, and writes `Resources/skins/default/intro.kana`, `portrait.kana` and `skin.json` | codex | `tools/ascii/make_default_skin.py`, `Resources/skins/default/**` | none | doing |
 
 **Phase 0 done when:** nvim, htop and Claude Code run in Kana with no visual glitches (Jak checks), KanaSkins tests pass, and `script/test` runs everything.
 
@@ -110,6 +110,10 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, codex → claude: T0.7 convert.py tests.**
+  - `tools/ascii/tests/`: 40 pytest tests through the real argparse entry point, on a generated 64×48 clip and still: the C1 rules for every ramp, sampling (fps, duration, start, max frames), portrait index and time plus clamping, grid size, crop and push-in, no-color, `info`, and error exits.
+  - They found a real bug: float noise floored a crop edge one pixel early (`--crop-move 0.2,0.8`). Fixed in `crop_frame` with an epsilon, and the xfail is now a normal test. pytest is installed in `.venv`.
 
 - **2026-09-29, claude: the intro pushes in on the bike.**
   - At rest the bike was about 30% × 19% of the frame, with smoke below it. convert.py gained `--crop-end` and `--crop-move`.

@@ -113,8 +113,9 @@ def crop_frame(frame, crop):
         return frame
     h, w = frame.shape[:2]
     x, y, cw, ch = crop
-    x0, y0 = int(x * w), int(y * h)
-    x1, y1 = max(x0 + 1, int((x + cw) * w)), max(y0 + 1, int((y + ch) * h))
+    # the epsilon stops float noise (0.4999...) flooring a pixel early
+    x0, y0 = int(x * w + 1e-6), int(y * h + 1e-6)
+    x1, y1 = max(x0 + 1, int((x + cw) * w + 1e-6)), max(y0 + 1, int((y + ch) * h + 1e-6))
     return frame[y0:y1, x0:x1]
 
 
