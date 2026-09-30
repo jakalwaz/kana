@@ -87,6 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = target
             return item
         }
+        /// Ghostty's second shortcut for an action: works, but isn't listed.
+        func hidden(_ item: NSMenuItem) -> NSMenuItem {
+            item.isHidden = true
+            item.allowsKeyEquivalentWhenHidden = true
+            return item
+        }
         func submenu(_ title: String, _ items: [NSMenuItem]) {
             let menu = NSMenu(title: title)
             items.forEach(menu.addItem)
@@ -111,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("New Tab", #selector(newTab(_:)), "t", target: self),
             .separator(),
             item("Close Tab", #selector(closeTab(_:)), "w", target: self),
+            hidden(item("Close Tab", #selector(closeTab(_:)), "w", [.command, .option], target: self)),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]),
             .separator(),
             item("Next Tab", #selector(nextTab(_:)), "]", [.command, .shift], target: self),
@@ -134,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Focus Mode", #selector(toggleFocusMode(_:)), "f", [.command, .shift], target: self),
             .separator(),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
+            hidden(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "\r")),
         ])
 
         submenu("Window", [

@@ -1,11 +1,12 @@
 # Kana zsh bootstrap.
 #
-# Kana starts zsh with ZDOTDIR pointing at this folder, and the user's own
-# ZDOTDIR (if they had one) in KANA_ZSH_ZDOTDIR. libghostty's shell
-# integration wraps this the same way (it saves our ZDOTDIR, runs its own
-# .zshenv, then puts ours back and sources this file), so the chain is:
+# Kana starts zsh through libghostty's shell integration. Ghostty sets
+# ZDOTDIR to its own folder; Kana sets GHOSTTY_ZSH_ZDOTDIR (where Ghostty's
+# .zshenv hands over next) to this folder, and passes the user's own ZDOTDIR,
+# if they had one, in KANA_ZSH_ZDOTDIR. So the chain is:
 #
 #   ghostty .zshenv -> this file -> the user's .zshenv
+#   (then ghostty .zshenv loads its integration: prompt marks, cwd reporting)
 #
 # We put ZDOTDIR back straight away so .zprofile, .zshrc and .zlogin all come
 # from the user's folder, then load kana.zsh from the first precmd, after

@@ -214,7 +214,8 @@ fi
 # ---------------------------------------------------------------- tab title
 
 # The folder at a prompt, the command while it runs. Kana's tabs show it.
-if [[ -n "$KANA" ]]; then
+# Ghostty's integration does the same when it's loaded, so only one sets it.
+if [[ -n "$KANA" && "$GHOSTTY_SHELL_FEATURES" != *title* ]]; then
     _kana_title_precmd() { builtin print -Pn -- '\e]2;%~\a' }
     _kana_title_preexec() {
         local cmd="${${1//[[:cntrl:]]/ }[1,60]}"

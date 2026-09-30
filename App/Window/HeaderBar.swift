@@ -23,7 +23,19 @@ final class HeaderBar: NSView {
 
     private let tabHeight: CGFloat = 24
     private let maxTabWidth: CGFloat = 200
-    private let minTabWidth: CGFloat = 90
+    /// With the wordmark hidden, eight tabs this wide fit the smallest window
+    /// (480 pt). Past that they run off the edge; ⌘1-9 and ⌘⇧[ ] still reach them.
+    private let minTabWidth: CGFloat = 36
+    private let tabGap: CGFloat = 6
+    private let plusReserve: CGFloat = 30
+    private let wordmarkReserve: CGFloat = 80
+
+    /// The wordmark gives way when the tabs need its room.
+    private var showsWordmark: Bool {
+        let n = CGFloat(titles.count)
+        let needed = leadingInset + n * minTabWidth + max(0, n - 1) * tabGap + plusReserve + wordmarkReserve
+        return needed <= bounds.width
+    }
 
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -45,13 +57,15 @@ final class HeaderBar: NSView {
     // MARK: geometry
 
     private var tabWidth: CGFloat {
-        let available = bounds.width - leadingInset - 60 - 40
         guard !titles.isEmpty else { return maxTabWidth }
-        return max(minTabWidth, min(maxTabWidth, available / CGFloat(titles.count)))
+        let n = CGFloat(titles.count)
+        let trailing = plusReserve + (showsWordmark ? wordmarkReserve : 10)
+        let available = bounds.width - leadingInset - trailing - tabGap * (n - 1)
+        return max(minTabWidth, min(maxTabWidth, available / n))
     }
 
     private func tabRect(_ i: Int) -> NSRect {
-        NSRect(x: leadingInset + CGFloat(i) * (tabWidth + 6), y: (bounds.height - tabHeight) / 2, width: tabWidth, height: tabHeight)
+        NSRect(x: leadingInset + CGFloat(i) * (tabWidth + tabGap), y: (bounds.height - tabHeight) / 2, width: tabWidth, height: tabHeight)
     }
 
     private func closeRect(_ i: Int) -> NSRect {
@@ -60,7 +74,7 @@ final class HeaderBar: NSView {
     }
 
     private var plusRect: NSRect {
-        let x = titles.isEmpty ? leadingInset : tabRect(titles.count - 1).maxX + 6
+        let x = titles.isEmpty ? leadingInset : tabRect(titles.count - 1).maxX + tabGap
         return NSRect(x: x, y: (bounds.height - tabHeight) / 2, width: tabHeight, height: tabHeight)
     }
 
@@ -84,7 +98,7 @@ final class HeaderBar: NSView {
         let plusColor = NSColor(white: 1, alpha: hoverPlus ? 0.85 : 0.4)
         drawCentered("+", in: plus, font: .systemFont(ofSize: 15, weight: .light), color: plusColor)
 
-        // wordmark
+        guard showsWordmark else { return }
         let mark = NSAttributedString(string: "カナ", attributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor(white: 1, alpha: 0.28),
@@ -110,6 +124,14 @@ final class HeaderBar: NSView {
         }
 
         let textRect = NSRect(x: rect.minX + 22, y: rect.minY, width: rect.width - 22 - 24, height: rect.height)
+        // narrow tabs show just a dot (grey unless selected) and the ×
+        guard textRect.width >= 16 else {
+            if !selected {
+                NSColor(white: 1, alpha: 0.3).setFill()
+                NSBezierPath(ovalIn: NSRect(x: rect.minX + 10, y: rect.midY - 2.5, width: 5, height: 5)).fill()
+            }
+            return drawClose(i, rect: rect, selected: selected, hovered: hovered)
+        }
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingHead
         let text = NSAttributedString(string: title, attributes: [
@@ -119,16 +141,18 @@ final class HeaderBar: NSView {
         ])
         let h = text.size().height
         text.draw(with: NSRect(x: textRect.minX, y: rect.midY - h / 2, width: textRect.width, height: h), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        drawClose(i, rect: rect, selected: selected, hovered: hovered)
+    }
 
-        if hovered || (selected && titles.count > 1) {
-            let close = closeRect(i)
-            if hovered, hoverClose {
-                NSColor(white: 1, alpha: 0.12).setFill()
-                NSBezierPath(roundedRect: close, xRadius: 4, yRadius: 4).fill()
-            }
-            drawCentered("×", in: close, font: .systemFont(ofSize: 12, weight: .regular),
-                         color: NSColor(white: 1, alpha: hovered && hoverClose ? 0.9 : 0.4))
+    private func drawClose(_ i: Int, rect _: NSRect, selected: Bool, hovered: Bool) {
+        guard hovered || (selected && titles.count > 1) else { return }
+        let close = closeRect(i)
+        if hovered, hoverClose {
+            NSColor(white: 1, alpha: 0.12).setFill()
+            NSBezierPath(roundedRect: close, xRadius: 4, yRadius: 4).fill()
         }
+        drawCentered("×", in: close, font: .systemFont(ofSize: 12, weight: .regular),
+                     color: NSColor(white: 1, alpha: hovered && hoverClose ? 0.9 : 0.4))
     }
 
     private func drawCentered(_ s: String, in rect: NSRect, font: NSFont, color: NSColor) {

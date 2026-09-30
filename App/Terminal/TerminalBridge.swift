@@ -2,8 +2,10 @@
 // GhosttyTerminal wrapper, which owns the ghostty.h calls). Everything else in
 // Kana goes through `TerminalSession`, so a Ghostty bump only touches here.
 //
-// Based on libghostty-spm's Example/GhosttyTerminalApp (surface setup) and
-// Ghostty's macos/Sources/Ghostty/Ghostty.Config.swift (keybind handling).
+// Based on libghostty-spm's Example/GhosttyTerminalApp (surface setup),
+// Ghostty's macos/Sources/Ghostty/Ghostty.Config.swift (keybind handling),
+// Features/Terminal/BaseTerminalController.swift (close confirmation) and
+// Features/ClipboardConfirmation/ (unsafe paste).
 
 import AppKit
 import GhosttyTerminal
@@ -50,14 +52,17 @@ enum TerminalBridge {
     private static var controller: TerminalController?
 
     /// Ghostty's default macOS keybinds that Kana handles itself (tabs,
-    /// windows, Focus Mode). While ghostty owns them, the keys never reach
-    /// Kana's menu. See `default` keybinds in Ghostty's src/config/Config.zig.
+    /// windows, Focus Mode, quit, config). While ghostty owns them, the view
+    /// swallows the keys and they never reach Kana's menu. See `default`
+    /// keybinds in Ghostty's src/config/Config.zig.
     private static let keysKanaOwns: [String] = {
         var keys = [
+            "super+q", "super+,",
             "super+t", "super+n", "super+w", "super+alt+w", "super+shift+w", "super+shift+alt+w",
             "super+shift+[", "super+shift+]", "super+d", "super+shift+d", "super+[", "super+]",
             "super+shift+f", "super+alt+p", "super+alt+i", "super+ctrl+f", "super+enter",
-            "super+shift+enter",
+            // super+shift+enter stays ghostty's (split zoom, a no-op for now):
+            // unbound, AppKit would match it to the menu's ⌘↩
         ]
         for i in 1 ... 9 { keys += ["super+\(i)", "super+digit_\(i)"] }
         return keys
@@ -98,7 +103,9 @@ final class TerminalSession: NSObject {
 
     var onTitleChange: ((String) -> Void)?
     var onWorkingDirectoryChange: ((String) -> Void)?
-    var onClose: (() -> Void)?
+    /// The surface is closing. `processAlive` means something other than an
+    /// idle shell is still running, so the host should confirm first.
+    var onClose: ((_ processAlive: Bool) -> Void)?
 
     private let surfaceView: AppTerminalView
 
@@ -120,9 +127,12 @@ final class TerminalSession: NSObject {
         )
     }
 
-    /// Shell environment. ZDOTDIR loads Kana's zsh layer (suggestions, prompt,
-    /// welcome screen) ahead of the user's own startup files; see
-    /// App/Shell/zsh/.zshenv.
+    /// Shell environment. Kana's zsh layer (suggestions, welcome screen) loads
+    /// through Ghostty's zsh integration: surface env vars are applied after
+    /// the integration sets ZDOTDIR (Ghostty's src/termio/Exec.zig), so
+    /// overriding ZDOTDIR would skip it. Instead GHOSTTY_ZSH_ZDOTDIR, where
+    /// Ghostty's .zshenv hands over next, points at Kana's folder. See
+    /// App/Shell/zsh/.zshenv for the whole chain.
     private static func environment(settings: KanaSettings, skin: SkinInfo?, banner: Banner, paneID: String) -> [String: String] {
         var env: [String: String] = [
             "KANA": "1",
@@ -137,7 +147,7 @@ final class TerminalSession: NSObject {
             if let userZDOTDIR = ProcessInfo.processInfo.environment["ZDOTDIR"] {
                 env["KANA_ZSH_ZDOTDIR"] = userZDOTDIR
             }
-            env["ZDOTDIR"] = zsh.path
+            env["GHOSTTY_ZSH_ZDOTDIR"] = zsh.path
         }
         return env
     }
@@ -153,12 +163,22 @@ final class TerminalSession: NSObject {
     func setVisible(_ visible: Bool) {
         surfaceView.setSurfaceVisible(visible)
     }
+
+    /// Asks Ghostty to close the surface. It answers through `onClose`, with
+    /// `processAlive` set when something is still running (Ghostty's
+    /// `needsConfirmQuit`), like Ghostty's own ⌘W.
+    func requestClose() {
+        if !surfaceView.performBindingAction("close_surface") {
+            onClose?(false)
+        }
+    }
 }
 
 extension TerminalSession:
     TerminalSurfaceTitleDelegate,
     TerminalSurfacePwdDelegate,
-    TerminalSurfaceCloseDelegate
+    TerminalSurfaceCloseDelegate,
+    TerminalSurfaceClipboardConfirmationDelegate
 {
     func terminalDidChangeTitle(_ title: String) {
         onTitleChange?(title)
@@ -168,7 +188,53 @@ extension TerminalSession:
         onWorkingDirectoryChange?(path)
     }
 
-    func terminalDidClose(processAlive _: Bool) {
-        onClose?()
+    func terminalDidClose(processAlive: Bool) {
+        onClose?(processAlive)
+    }
+
+    /// Multi-line pastes into a program without bracketed paste, and OSC 52
+    /// clipboard access. Without this delegate the wrapper denies them all.
+    func terminalDidRequestClipboardConfirmation(_ request: TerminalClipboardConfirmationRequest) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        switch request.kind {
+        case .paste:
+            alert.messageText = "Paste this text?"
+            alert.informativeText = "It may run commands as soon as it's pasted."
+            alert.addButton(withTitle: "Paste")
+        case .osc52Read:
+            alert.messageText = "Let this program read your clipboard?"
+            alert.informativeText = "A program in this terminal asked for what's on your clipboard."
+            alert.addButton(withTitle: "Allow")
+        case .osc52Write:
+            alert.messageText = "Let this program set your clipboard?"
+            alert.informativeText = "A program in this terminal wants to copy this to your clipboard."
+            alert.addButton(withTitle: "Allow")
+        }
+        alert.addButton(withTitle: "Cancel")
+        if request.kind != .osc52Read {
+            alert.accessoryView = Self.preview(request.contents)
+        }
+        guard let window = surfaceView.window else {
+            request.respond(allow: false)
+            return
+        }
+        alert.beginSheetModal(for: window) { response in
+            request.respond(allow: response == .alertFirstButtonReturn)
+        }
+    }
+
+    /// A read-only box showing what would be pasted.
+    private static func preview(_ text: String) -> NSView {
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 420, height: 140))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        let textView = NSTextView(frame: scroll.bounds)
+        textView.isEditable = false
+        textView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.string = text.count > 4000 ? String(text.prefix(4000)) + "\n…" : text
+        textView.autoresizingMask = [.width]
+        scroll.documentView = textView
+        return scroll
     }
 }

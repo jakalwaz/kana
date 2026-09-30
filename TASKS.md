@@ -71,6 +71,7 @@ Rules: validate that every frame has `height` rows of exactly `width` characters
 | T0.6 | KanaSkins package per contract C1, with unit tests covering good files, stills, bad JSON, wrong row width, wrong color length, portrait clamping | codex → claude | `Packages/KanaSkins/**` | none | review |
 | T0.7 | pytest suite for `convert.py`: generate a synthetic clip and image in a temp dir, check convert, portrait options, crop, no-color, and error cases | codex | `tools/ascii/tests/**` | none | done |
 | T0.8 | Original default skin: `tools/ascii/make_default_skin.py` draws a simple original animation (a red light streak sliding in and coming to rest, no copyrighted imagery) straight to frames, and writes `Resources/skins/default/intro.kana`, `portrait.kana` and `skin.json` | codex | `tools/ascii/make_default_skin.py`, `Resources/skins/default/**` | none | review (needs Jak's look) |
+| T0.9 | Confirm before closing a window or quitting while something is running (Ghostty's `needs_confirm_quit`). Tab close already confirms | claude | `App/Window/*`, `App/KanaApp.swift` | T0.4 | blocked: libghostty-spm keeps the surface handle internal, see Decisions |
 
 **Phase 0 done when:** nvim, htop and Claude Code run in Kana with no visual glitches (Jak checks), KanaSkins tests pass, and `script/test` runs everything.
 
@@ -105,11 +106,22 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 - **T0.1: SwiftPM or an Xcode project?** Xcode wasn't usable when this started (no license accepted), so Kana is a SwiftPM package that `script/build` wraps into `build/Kana.app`. Keep SwiftPM: builds from the terminal and the Command Line Tools, no pbxproj merge conflicts (claude). Add an Xcode project later for signing, entitlements and asset catalogs (open).
 - **P2.1: suggestions live in zsh, not in the app.** The spec puts them in `App/History/` and accepts with →. Kana loads its own zsh layer through ZDOTDIR (chained after libghostty's shell integration), so suggestions follow the real line editor (vi mode, multi-line, completion menus) instead of guessing what's typed. Tab accepts as you asked, → still works too. The cost: zsh only for now; bash and fish get nothing. Keep in zsh (claude), or build app-side suggestions later for every shell (open).
 - **P2.3: the intro plays in the terminal, not in a native overlay.** Spec section 7 says "renders in a native overlay, never through the shell". Jak asked for a Claude Code style welcome screen that stays in the scrollback, so `kana banner` prints it through the shell before the first prompt. It only redraws its own box (relative cursor moves) and puts the terminal back afterwards (tested through a pty, with and without a skip key). The native overlay and the portrait header are gone. `clear` then `kana` brings it back. Keep it in the terminal (claude), or bring back an overlay for the first second (open).
-- **Process: no Codex this session.** The `codex-cli` MCP server wasn't connected, so T0.5 and T0.6 were done by Claude and nothing got a Codex review. Connect it (`claude mcp add codex-cli -- npx -y codex-mcp-server`) and run a review pass before merging.
+- **Process: Codex review of last session's work.** Codex is connected now (called with `model: gpt-6-astra`). Batch 1 (bridge, input, window, tabs: T0.1 to T0.4, P2.2) is reviewed and fixed. Batch 2 (zsh layer P2.1, welcome screen P2.3, scripts T0.5, KanaSkins T0.6) is still to do.
+- **T0.9: how to get `ghostty_surface_needs_confirm_quit`.** libghostty-spm's `AppTerminalView.surface` is internal, so Kana can't ask whether a window's tabs are busy. Open an issue or PR upstream (Lakr233/libghostty-spm) asking for a public `needsConfirmQuit` (claude recommends; it's outward-facing, so Jak's call), or vendor a patched copy (claude: no, it breaks the exact pin).
 
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, claude: fixes from Codex's review of the bridge and window code.**
+  - Codex reviewed T0.1 to T0.4 and P2.2 against `../ghostty-pinned` and found 7 bugs and 1 risk. All were real and all are fixed; the fixes took two review rounds and ended clean.
+  - Ghostty's zsh integration never loaded. Surface env vars are applied after the integration sets ZDOTDIR (Exec.zig), so Kana's ZDOTDIR replaced it. Kana now sets `GHOSTTY_ZSH_ZDOTDIR`, and the chain is ghostty → Kana → the user's files. Tested headlessly. kana.zsh leaves the title to Ghostty when Ghostty's integration sets it.
+  - ⌘W and × now ask Ghostty (`close_surface`) and confirm when something is running, like Ghostty's BaseTerminalController. The sheet closes itself if the tab exits first.
+  - Closing a background tab no longer changes the selected tab.
+  - Unsafe pastes and OSC 52 now ask instead of being silently denied (they had no confirmation delegate).
+  - ⌘Q and ⌘, reach the menu again. ⌥⌘W and ⌘↩ work as hidden shortcuts.
+  - Minimized or covered windows stop rendering (occlusion).
+  - Header tabs fit: eight tabs at the minimum window width, with the wordmark giving way.
 
 - **2026-09-30, claude: the bundled default skin is the default.**
   - `skin` now defaults to `default`. The app and `kana` fall back to it when the configured skin is missing, so a fresh clone plays an intro. Jak's `~/.config/kana/config` now has `skin = akira`.

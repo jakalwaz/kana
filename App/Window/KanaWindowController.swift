@@ -2,7 +2,8 @@ import AppKit
 
 /// One Kana window: the header with tabs, and one TerminalPane per tab.
 /// Based on Ghostty's macos/Sources/Features/Terminal/TerminalController.swift
-/// for the window setup (transparent title bar, full-size content).
+/// for the window setup (transparent title bar, full-size content), and
+/// BaseTerminalController.swift for close confirmation and occlusion.
 @MainActor
 final class KanaWindowController: NSWindowController, NSWindowDelegate {
     private let settings: KanaSettings
@@ -16,6 +17,9 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     private var nextBanner: TerminalSession.Banner
 
     private(set) var focusMode = false
+    /// The open "close this tab?" sheet, so it goes away if its tab closes
+    /// on its own first.
+    private var closeSheet: (pane: TerminalPane, alert: NSAlert)?
 
     var onClose: ((KanaWindowController) -> Void)?
 
@@ -110,9 +114,13 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         pane.session.onWorkingDirectoryChange = { [weak pane] path in
             pane?.workingDirectory = path
         }
-        pane.session.onClose = { [weak self, weak pane] in
-            guard let self, let pane, let i = panes.firstIndex(of: pane) else { return }
-            closeTab(at: i)
+        pane.session.onClose = { [weak self, weak pane] processAlive in
+            guard let self, let pane else { return }
+            if processAlive {
+                confirmClose(pane)
+            } else {
+                remove(pane)
+            }
         }
         panes.append(pane)
         content.addSubview(pane)
@@ -125,21 +133,65 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         selected = index
         for (i, pane) in panes.enumerated() {
             pane.isHidden = i != index
-            pane.session.setVisible(i == index)
         }
+        syncVisibility()
         panes[index].session.focus()
         refreshHeader()
     }
 
+    /// Only the selected tab of an unoccluded window renders. Before the
+    /// window is first shown it counts as visible.
+    private func syncVisibility() {
+        let occluded = window.map { $0.isMiniaturized || ($0.isVisible && !$0.occlusionState.contains(.visible)) } ?? false
+        for (i, pane) in panes.enumerated() {
+            pane.session.setVisible(i == selected && !occluded)
+        }
+    }
+
+    func windowDidChangeOcclusionState(_: Notification) { syncVisibility() }
+
+    /// ⌘W and the tab's ×: Ghostty decides whether to confirm, then calls
+    /// back through the session's onClose.
     func closeTab(at index: Int) {
         guard panes.indices.contains(index) else { return }
-        let pane = panes.remove(at: index)
+        panes[index].session.requestClose()
+    }
+
+    private func confirmClose(_ pane: TerminalPane) {
+        guard let window, window.attachedSheet == nil, panes.contains(pane) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Close “\(pane.title)”?"
+        alert.informativeText = "Something is still running in it. Closing the tab will stop it."
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel")
+        closeSheet = (pane, alert)
+        alert.beginSheetModal(for: window) { [weak self, weak pane] response in
+            guard let self else { return }
+            closeSheet = nil
+            guard response == .alertFirstButtonReturn, let pane else { return }
+            remove(pane)
+        }
+    }
+
+    /// Drops the pane. Closing a background tab keeps the current one selected.
+    private func remove(_ pane: TerminalPane) {
+        guard let index = panes.firstIndex(of: pane) else { return }
+        if let sheet = closeSheet, sheet.pane === pane, let window {
+            window.endSheet(sheet.alert.window, returnCode: .abort)
+        }
+        let current = currentPane
+        panes.remove(at: index)
         pane.removeFromSuperview()
         if panes.isEmpty {
             window?.close()
             return
         }
-        select(min(index, panes.count - 1))
+        if let current, current !== pane, let i = panes.firstIndex(of: current) {
+            selected = i
+            refreshHeader()
+        } else {
+            select(min(index, panes.count - 1))
+        }
     }
 
     func closeCurrentTab() { closeTab(at: selected) }
