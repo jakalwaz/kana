@@ -29,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and after the intro, for checking the look without screen recording.
     private func scheduleDebugSnapshots() {
         guard let prefix = ProcessInfo.processInfo.environment["KANA_DEBUG_SNAPSHOT"] else { return }
+        // KANA_DEBUG_PALETTE=1 opens the palette first, to check its look
+        if ProcessInfo.processInfo.environment["KANA_DEBUG_PALETTE"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.showCommandPalette(nil) }
+        }
         for delay in [0.9, 1.6, 4.5] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let view = self?.windows.first?.window?.contentView,
@@ -94,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// also catches ⌘↩, which is Ghostty's full screen.
     @objc func toggleSplitZoom(_: Any?) {
         if let event = NSApp.currentEvent, event.type == .keyDown, event.keyCode == 36,
-           !event.modifierFlags.contains(.shift)
+           event.modifierFlags.contains(.command), !event.modifierFlags.contains(.shift)
         {
             active?.window?.toggleFullScreen(nil)
         } else {
@@ -106,6 +110,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func previousTab(_: Any?) { active?.selectPrevious() }
     @objc func selectTab(_ sender: NSMenuItem) { active?.select(sender.tag) }
     @objc func toggleFocusMode(_: Any?) { active?.toggleFocusMode() }
+
+    /// ⌘⇧K (and ⌘⇧P, Ghostty's): every menu action, plus themes to try.
+    @objc func showCommandPalette(_: Any?) {
+        guard let active, let menu = NSApp.mainMenu else { return }
+        active.togglePalette(PaletteCommand.fromMenu(menu) + themeCommands())
+    }
+
+    /// Switches the theme for this session only; `theme = <name>` in the
+    /// config keeps it.
+    private func themeCommands() -> [PaletteCommand] {
+        ThemeLibrary.names.map { name in
+            PaletteCommand(id: "theme:\(name)", title: "Theme: \(name)", subtitle: "this session") { [weak self] in
+                guard let self else { return }
+                settings.config.theme = name
+                TerminalBridge.reload(settings: settings)
+                for window in windows {
+                    window.settings = settings
+                    window.applyTheme()
+                }
+            }
+        }
+    }
 
     /// How many panes want you, on the dock icon.
     private func updateDockBadge() {
@@ -175,6 +201,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .separator(),
             item("Open Config Folder", #selector(openConfigFolder(_:)), ",", target: self),
             item("Reload Config", #selector(reloadConfig(_:)), ",", [.command, .shift], target: self),
+            item("Command Palette", #selector(showCommandPalette(_:)), "k", [.command, .shift], target: self),
+            {
+                // ⌘⇧P too, Ghostty's shortcut: works, but not listed
+                let alias = item("Command Palette", #selector(showCommandPalette(_:)), "p", [.command, .shift], target: self)
+                alias.isHidden = true
+                alias.allowsKeyEquivalentWhenHidden = true
+                return alias
+            }(),
             .separator(),
             item("Hide Kana", #selector(NSApplication.hide(_:)), "h", target: NSApp),
             item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),

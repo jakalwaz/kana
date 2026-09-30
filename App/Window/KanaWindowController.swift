@@ -53,6 +53,8 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     private var tabClose: (tab: Tab, busy: [TerminalPane])?
 
     var onClose: ((KanaWindowController) -> Void)?
+    private var palette: PaletteOverlay?
+
     /// A pane started or stopped wanting you: the dock badge needs a recount.
     var onAttentionChange: (() -> Void)?
 
@@ -244,6 +246,7 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
 
     func select(_ index: Int) {
         guard tabs.indices.contains(index) else { return }
+        if palette != nil { hidePalette() }
         selected = index
         for (i, tab) in tabs.enumerated() {
             tab.container.isHidden = i != index
@@ -268,6 +271,26 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     func windowDidChangeOcclusionState(_: Notification) {
         syncVisibility()
         clearSeen()
+    }
+
+    // MARK: palette
+
+    /// ⌘⇧K / ⌘⇧P. Pressing it again closes it.
+    func togglePalette(_ commands: [PaletteCommand]) {
+        if palette != nil { return hidePalette() }
+        guard let root = window?.contentView else { return }
+        let overlay = PaletteOverlay(commands: commands, topInset: focusMode ? 0 : HeaderBar.height)
+        overlay.frame = root.bounds
+        overlay.autoresizingMask = [.width, .height]
+        overlay.onDismiss = { [weak self] in self?.hidePalette() }
+        root.addSubview(overlay)
+        palette = overlay
+    }
+
+    private func hidePalette() {
+        palette?.removeFromSuperview()
+        palette = nil
+        currentPane?.session.focus()
     }
 
     // MARK: attention
@@ -513,6 +536,8 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_: Notification) {
+        // an open palette keeps the keyboard
+        guard palette == nil else { return }
         currentPane?.session.focus()
         // already first responder, so no focus callback: clear it here
         clearSeen()

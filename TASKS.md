@@ -104,7 +104,7 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 | T1.6 | Find in scrollback: ⌘F bar, ⌘G / ⇧⌘G, ⌘E | claude | `App/Window/*`, `App/Terminal/*` | T1.2 | todo |
 | T1.7 | Quick terminal: global hotkey drop-down panel | claude | `App/Window/*`, `App/KanaApp.swift` | T1.2 | todo |
 | T1.8 | FuzzyMatch + CommandPaletteView (SwiftUI) per C4 | codex | `Core/FuzzyMatch.swift`, `App/Palette/**`, `Tests/KanaCoreTests/**` | C4 | done |
-| T1.9 | Palette commands for every action, theme switching, ⌘⇧K / ⌘⇧P | claude | `App/KanaApp.swift`, `App/Window/*` | T1.8 | todo |
+| T1.9 | Palette commands for every action, theme switching, ⌘⇧K / ⌘⇧P | claude | `App/KanaApp.swift`, `App/Window/*` | T1.8 | review (needs Jak's checklist) |
 
 ## Side quest: intro assets (Jak)
 
@@ -143,6 +143,10 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, claude: command palette (T1.9).**
+  - ⌘⇧K (and ⌘⇧P, hidden) opens `CommandPaletteView` as an overlay under the header. It lists every enabled menu item, walked from the main menu so it never falls behind, with its real shortcut, plus "Theme: <name>" for all 657 themes (live, for the session). Checked with a screenshot via `KANA_DEBUG_PALETTE=1` plus `KANA_DEBUG_SNAPSHOT`.
+  - Codex review round 1: the palette stayed up while the terminal took the keyboard (tab switch, app switch), disabled items were listed, and a Return from the palette could turn Zoom Split into full screen. Fixed, along with duplicate IDs for same-titled windows. Codex tried to use Computer Use on Kana during a read-only review and was denied.
 
 - **2026-09-30, claude: notifications, attention, progress, links (T1.5).**
   - A command that ran at least 10 s (`notify-on-command-finish-after`) and finished where you weren't looking posts a macOS notification ("✓ npm test · Finished in 2m 4s"). OSC 9/777 from programs (Claude Code, since TERM_PROGRAM is ghostty) posts too. Clicking one brings back the window, tab and split.
