@@ -100,7 +100,7 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 | T1.2 | Splits in the window: SplitContainerView, a split tree per tab, ⌘D / ⌘⇧D, ⌘⌥arrows, ⌘[ ], ⌘⇧↩ zoom, ⌃⌘= equalize, drag dividers, ⌘W closes a split, dim unfocused | claude | `App/Window/*`, `App/Terminal/*`, `App/KanaApp.swift`, `Package.swift` | T1.1 contract | review (needs Jak's checklist) |
 | T1.3 | KanaConfig: Kana keys vs Ghostty passthrough, render one Ghostty config file; vendor themes | codex | `Core/KanaConfig.swift`, `Tests/KanaCoreTests/**`, `tools/themes/**`, `Resources/themes/**` | C3 | done |
 | T1.4 | Config wiring: controller from the rendered file, `theme =`, ⌘⇧, reload, error banner | claude | `App/Terminal/*`, `App/KanaSettings.swift`, `script/build` | T1.3 | review (needs Jak's checklist) |
-| T1.5 | Notifications (command finished, OSC 9/777, bell), tab attention dot + dock badge, progress bar, ⌘-click URLs + hover preview | claude | `App/Notify/*`, `App/Terminal/*`, `App/Window/*` | T1.2 | todo |
+| T1.5 | Notifications (command finished, OSC 9/777, bell), tab attention dot + dock badge, progress bar, ⌘-click URLs + hover preview | claude | `App/Notify/*`, `App/Terminal/*`, `App/Window/*` | T1.2 | review (needs Jak's checklist) |
 | T1.6 | Find in scrollback: ⌘F bar, ⌘G / ⇧⌘G, ⌘E | claude | `App/Window/*`, `App/Terminal/*` | T1.2 | todo |
 | T1.7 | Quick terminal: global hotkey drop-down panel | claude | `App/Window/*`, `App/KanaApp.swift` | T1.2 | todo |
 | T1.8 | FuzzyMatch + CommandPaletteView (SwiftUI) per C4 | codex | `Core/FuzzyMatch.swift`, `App/Palette/**`, `Tests/KanaCoreTests/**` | C4 | doing |
@@ -143,6 +143,12 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, claude: notifications, attention, progress, links (T1.5).**
+  - A command that ran at least 10 s (`notify-on-command-finish-after`) and finished where you weren't looking posts a macOS notification ("✓ npm test · Finished in 2m 4s"). OSC 9/777 from programs (Claude Code, since TERM_PROGRAM is ghostty) posts too. Clicking one brings back the window, tab and split.
+  - Unseen activity (and the bell) puts a larger accent dot on the tab plus a dock badge count; looking at the pane clears it. OSC 9;4 progress draws a bar under the tab.
+  - ⌘-click links now open; before, the wrapper dropped them. Every link goes through `UntrustedURL`, ported from Ghostty's OSC 8 policy, because the wrapper doesn't say which links came from OSC 8: apps, scripts, symlinks to them, remote file hosts and hidden bidi characters are refused, custom schemes ask (Cancel is the default). Tested standalone on 14 cases. ⌘-hover shows the link bottom-left.
+  - Codex review round 1: the link sheet could deadlock under Ghostty's renderer lock (now deferred), programmatic focus cleared unseen dots, the command-name heuristic was wrong (now the title at OSC 133 D, which Codex traced through Ghostty's mailbox), and Return defaulted to Open. Round 2 risks fixed after the limit: a closed window, and re-checking what's seen on activation and occlusion.
 
 - **2026-09-30, codex + claude: config + themes (T1.3, T1.4).**
   - T1.3 (codex): `KanaConfig` parses `~/.config/kana/config`. Kana's keys become fields; every other line goes to Ghostty in order. It renders one Ghostty config file. 15 tests. `tools/themes/vendor_themes.py` vendors 657 themes (MIT) from iTerm2-Color-Schemes, pinned to the 2026-09-28 release (Claude ran it; Codex's sandbox has no network).

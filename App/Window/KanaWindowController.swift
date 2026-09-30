@@ -53,6 +53,8 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     private var tabClose: (tab: Tab, busy: [TerminalPane])?
 
     var onClose: ((KanaWindowController) -> Void)?
+    /// A pane started or stopped wanting you: the dock badge needs a recount.
+    var onAttentionChange: (() -> Void)?
 
     init(settings: KanaSettings, skin: SkinInfo?, playIntro: Bool, workingDirectory: String? = nil) {
         self.settings = settings
@@ -181,12 +183,39 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         pane.session.onWorkingDirectoryChange = { [weak pane] path in
             pane?.workingDirectory = path
         }
-        // a click into a split focuses it
+        // a click into a split focuses it, and looking at a pane clears its dot
         pane.session.onFocusChange = { [weak self, weak pane] focused in
-            guard focused, let self, let pane, let tab = tab(containing: pane), tab.focused !== pane else { return }
-            tab.focused = pane
-            apply(tab)
+            guard focused, let self, let pane, let tab = tab(containing: pane) else { return }
+            if tab.focused !== pane {
+                tab.focused = pane
+                apply(tab)
+            }
+            // focus also moves on its own (a split closing) while you're away
+            if isSeen(pane) { seen(pane) }
             refreshHeader()
+        }
+        pane.session.onCommandFinished = { [weak self, weak pane] exitCode, duration in
+            guard let self, let pane else { return }
+            pane.progress = nil
+            refreshHeader()
+            commandFinished(in: pane, exitCode: exitCode, duration: duration)
+        }
+        pane.session.onNotification = { [weak self, weak pane] title, body in
+            guard let self, let pane, !isSeen(pane) else { return }
+            Notifier.shared.post(title: title.isEmpty ? pane.title : title, body: body, paneID: pane.session.paneID)
+            wantsAttention(pane)
+        }
+        pane.session.onBell = { [weak self, weak pane] in
+            guard let self, let pane, !isSeen(pane) else { return }
+            wantsAttention(pane)
+            if !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+        }
+        pane.session.onProgress = { [weak self, weak pane] progress in
+            pane?.progress = progress
+            self?.refreshHeader()
+        }
+        pane.session.onHoverLink = { [weak pane] url in
+            pane?.hoverLink = url
         }
         pane.session.onClose = { [weak self, weak pane] processAlive in
             guard let self, let pane else { return }
@@ -236,7 +265,87 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func windowDidChangeOcclusionState(_: Notification) { syncVisibility() }
+    func windowDidChangeOcclusionState(_: Notification) {
+        syncVisibility()
+        clearSeen()
+    }
+
+    // MARK: attention
+
+    /// On screen and focused, in the active app: you're looking at it.
+    private func isSeen(_ pane: TerminalPane) -> Bool {
+        guard NSApp.isActive, window?.isKeyWindow == true, let window, !window.isMiniaturized,
+              window.occlusionState.contains(.visible)
+        else { return false }
+        return currentPane === pane
+    }
+
+    /// `notify-on-command-finish` (default unfocused) for commands that took
+    /// at least `notify-on-command-finish-after` (default 10 s).
+    private func commandFinished(in pane: TerminalPane, exitCode: Int?, duration: TimeInterval) {
+        let config = settings.config
+        guard config.notifyOnCommandFinish != .never, duration >= config.notifyAfter else { return }
+        let unseen = !isSeen(pane)
+        guard config.notifyOnCommandFinish == .always || unseen else { return }
+        // the shell integration reports the end before it puts the prompt's
+        // title back, so the title is still the command line
+        let command = pane.title
+        let failed = (exitCode ?? 0) != 0
+        let took = Self.format(duration)
+        Notifier.shared.post(
+            title: (failed ? "✗ " : "✓ ") + command,
+            body: failed ? "Failed with exit \(exitCode ?? 0) after \(took)" : "Finished in \(took)",
+            paneID: pane.session.paneID
+        )
+        if unseen { wantsAttention(pane) }
+    }
+
+    private static func format(_ seconds: TimeInterval) -> String {
+        let s = Int(seconds.rounded())
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return "\(s / 60)m \(s % 60)s" }
+        return "\(s / 3600)h \(s % 3600 / 60)m"
+    }
+
+    private func wantsAttention(_ pane: TerminalPane) {
+        guard !pane.needsAttention else { return }
+        pane.needsAttention = true
+        refreshHeader()
+        onAttentionChange?()
+    }
+
+    /// The pane you're looking at can't want you. Run whenever "looking"
+    /// may have just started: app activation, key window, occlusion.
+    func clearSeen() {
+        if let pane = currentPane, isSeen(pane) { seen(pane) }
+    }
+
+    private func seen(_ pane: TerminalPane) {
+        guard pane.needsAttention else { return }
+        pane.needsAttention = false
+        refreshHeader()
+        onAttentionChange?()
+    }
+
+    /// Panes here that want you, for the dock badge.
+    var attentionCount: Int {
+        tabs.reduce(0) { $0 + $1.panes.filter(\.needsAttention).count }
+    }
+
+    /// A notification was clicked: show its pane. False if it isn't here.
+    func reveal(paneID: String) -> Bool {
+        guard let index = tabs.firstIndex(where: { $0.panes.contains { $0.session.paneID == paneID } }),
+              let pane = tabs[index].panes.first(where: { $0.session.paneID == paneID })
+        else { return false }
+        let tab = tabs[index]
+        if let zoomed = tab.tree.zoomed, zoomed !== pane { tab.tree = tab.tree.toggledZoom(zoomed) }
+        tab.focused = pane
+        apply(tab)
+        window?.makeKeyAndOrderFront(nil)
+        select(index)
+        seen(pane)
+        return true
+    }
 
     // MARK: splits
 
@@ -345,6 +454,7 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
             : tab.focused
         tab.tree = tab.tree.removing(pane)
         pane.removeFromSuperview()
+        if pane.needsAttention { onAttentionChange?() }
         guard let first = tab.tree.leaves.first else {
             removeTab(tab)
             return
@@ -384,6 +494,9 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
 
     private func refreshHeader() {
         header.titles = tabs.map(\.focused.title)
+        header.attention = tabs.map { $0.panes.contains(where: \.needsAttention) }
+        // the focused split's progress, else any split's
+        header.progress = tabs.map { tab in tab.focused.progress ?? tab.panes.lazy.compactMap(\.progress).first }
         header.selectedIndex = selected
         window?.title = currentPane?.title ?? "Kana"
     }
@@ -401,5 +514,7 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
 
     func windowDidBecomeKey(_: Notification) {
         currentPane?.session.focus()
+        // already first responder, so no focus callback: clear it here
+        clearSeen()
     }
 }

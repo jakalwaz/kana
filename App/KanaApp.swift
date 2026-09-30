@@ -10,6 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.mainMenu = makeMenu()
+        Notifier.shared.start()
+        Notifier.shared.onOpen = { [weak self] paneID in
+            guard let self, windows.contains(where: { $0.reveal(paneID: paneID) }) else { return }
+            NSApp.activate(ignoringOtherApps: true)
+        }
         newWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
         reportConfigIssues()
@@ -37,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool { true }
 
+    func applicationDidBecomeActive(_: Notification) {
+        windows.forEach { $0.clearSeen() }
+    }
+
     func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool { true }
 
     private var skin: SkinInfo? { SkinManager.find(settings: settings) }
@@ -58,7 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = KanaWindowController(settings: settings, skin: skin, playIntro: playIntro)
         controller.onClose = { [weak self] closed in
             self?.windows.removeAll { $0 === closed }
+            self?.updateDockBadge()
         }
+        controller.onAttentionChange = { [weak self] in self?.updateDockBadge() }
         if let previous = active?.window {
             controller.window?.setFrameTopLeftPoint(NSPoint(x: previous.frame.minX + 28, y: previous.frame.maxY - 28))
         }
@@ -95,6 +106,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func previousTab(_: Any?) { active?.selectPrevious() }
     @objc func selectTab(_ sender: NSMenuItem) { active?.select(sender.tag) }
     @objc func toggleFocusMode(_: Any?) { active?.toggleFocusMode() }
+
+    /// How many panes want you, on the dock icon.
+    private func updateDockBadge() {
+        let count = windows.reduce(0) { $0 + $1.attentionCount }
+        NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
+    }
 
     /// ⌘⇧,: re-reads the config. Ghostty settings (fonts, theme, keybinds)
     /// change in every open terminal; Kana's own (banner, suggestions) apply

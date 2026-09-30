@@ -11,6 +11,10 @@ final class HeaderBar: NSView {
 
     var titles: [String] = [] { didSet { needsDisplay = true } }
     var selectedIndex = 0 { didSet { needsDisplay = true } }
+    /// Per tab: something there wants you (an accent dot, like the selected
+    /// tab's), and OSC 9;4 progress (a thin bar along the bottom).
+    var attention: [Bool] = [] { didSet { needsDisplay = true } }
+    var progress: [TerminalSession.Progress?] = [] { didSet { needsDisplay = true } }
     var accent = NSColor.systemRed { didSet { needsDisplay = true } }
     /// The terminal's background; text and pills flip dark on light themes.
     var background = NSColor.black { didSet { needsDisplay = true } }
@@ -124,15 +128,21 @@ final class HeaderBar: NSView {
             ink(selected ? 0.09 : 0.05).setFill()
             NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7).fill()
         }
-        if selected {
+        let wantsYou = attention.indices.contains(i) && attention[i]
+        if selected || wantsYou {
             accent.setFill()
-            NSBezierPath(ovalIn: NSRect(x: rect.minX + 10, y: rect.midY - 2.5, width: 5, height: 5)).fill()
+            // a bigger dot when it's calling you from another tab
+            let r: CGFloat = wantsYou && !selected ? 3.5 : 2.5
+            NSBezierPath(ovalIn: NSRect(x: rect.minX + 12.5 - r, y: rect.midY - r, width: 2 * r, height: 2 * r)).fill()
+        }
+        if progress.indices.contains(i), let p = progress[i] {
+            drawProgress(p, in: rect)
         }
 
         let textRect = NSRect(x: rect.minX + 22, y: rect.minY, width: rect.width - 22 - 24, height: rect.height)
         // narrow tabs show just a dot (grey unless selected) and the ×
         guard textRect.width >= 16 else {
-            if !selected {
+            if !selected, !wantsYou {
                 ink(0.3).setFill()
                 NSBezierPath(ovalIn: NSRect(x: rect.minX + 10, y: rect.midY - 2.5, width: 5, height: 5)).fill()
             }
@@ -148,6 +158,24 @@ final class HeaderBar: NSView {
         let h = text.size().height
         text.draw(with: NSRect(x: textRect.minX, y: rect.midY - h / 2, width: textRect.width, height: h), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         drawClose(i, rect: rect, selected: selected, hovered: hovered)
+    }
+
+    /// Busy with no percentage: a faint full bar. Red when it failed,
+    /// amber when paused.
+    private func drawProgress(_ p: TerminalSession.Progress, in rect: NSRect) {
+        let track = NSRect(x: rect.minX + 8, y: rect.maxY - 3, width: rect.width - 16, height: 2)
+        let color = p.failed ? NSColor.systemRed : p.paused ? NSColor.systemOrange : accent
+        guard let percent = p.percent else {
+            color.withAlphaComponent(0.35).setFill()
+            NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
+            return
+        }
+        ink(0.08).setFill()
+        NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
+        var done = track
+        done.size.width = track.width * CGFloat(min(100, max(0, percent))) / 100
+        color.setFill()
+        NSBezierPath(roundedRect: done, xRadius: 1, yRadius: 1).fill()
     }
 
     private func drawClose(_ i: Int, rect _: NSRect, selected: Bool, hovered: Bool) {

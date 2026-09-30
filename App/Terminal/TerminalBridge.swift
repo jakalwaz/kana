@@ -156,6 +156,23 @@ final class TerminalSession: NSObject {
 
     var onTitleChange: ((String) -> Void)?
     var onFocusChange: ((Bool) -> Void)?
+    /// A command ended (shell integration's prompt marks). Exit code nil
+    /// when the shell didn't say.
+    var onCommandFinished: ((_ exitCode: Int?, _ duration: TimeInterval) -> Void)?
+    /// OSC 9 / OSC 777 from a program (Claude Code uses these), or the bell.
+    var onNotification: ((_ title: String, _ body: String) -> Void)?
+    var onBell: (() -> Void)?
+    /// OSC 9;4: nil when the program cleared it; percent nil when it only
+    /// says it's busy.
+    var onProgress: ((Progress?) -> Void)?
+    /// ⌘ over a link: the URL, or nil when the pointer left it.
+    var onHoverLink: ((String?) -> Void)?
+
+    struct Progress: Equatable {
+        var percent: Int?
+        var failed = false
+        var paused = false
+    }
     var onWorkingDirectoryChange: ((String) -> Void)?
     /// The surface is closing. `processAlive` means something other than an
     /// idle shell is still running, so the host should confirm first.
@@ -233,6 +250,12 @@ extension TerminalSession:
     TerminalSurfacePwdDelegate,
     TerminalSurfaceCloseDelegate,
     TerminalSurfaceFocusDelegate,
+    TerminalSurfaceCommandFinishedDelegate,
+    TerminalSurfaceDesktopNotificationDelegate,
+    TerminalSurfaceBellDelegate,
+    TerminalSurfaceProgressReportDelegate,
+    TerminalSurfaceOpenURLDelegate,
+    TerminalSurfaceHoverLinkDelegate,
     TerminalSurfaceClipboardConfirmationDelegate
 {
     func terminalDidChangeTitle(_ title: String) {
@@ -245,6 +268,69 @@ extension TerminalSession:
 
     func terminalDidChangeFocus(_ focused: Bool) {
         onFocusChange?(focused)
+    }
+
+    func terminalDidFinishCommand(exitCode: Int?, durationNanos: UInt64) {
+        onCommandFinished?(exitCode, TimeInterval(durationNanos) / 1_000_000_000)
+    }
+
+    func terminalDidRequestDesktopNotification(title: String, body: String) {
+        onNotification?(title, body)
+    }
+
+    func terminalDidRingBell() {
+        onBell?()
+    }
+
+    func terminalDidReportProgress(state: TerminalProgressState, percent: Int?) {
+        switch state {
+        case .remove: onProgress?(nil)
+        case .set: onProgress?(Progress(percent: percent))
+        case .indeterminate: onProgress?(Progress(percent: nil))
+        case .error: onProgress?(Progress(percent: percent, failed: true))
+        case .pause: onProgress?(Progress(percent: percent, paused: true))
+        }
+    }
+
+    /// ⌘-click on a URL or an OSC 8 hyperlink. Terminal output chose the
+    /// target, so it goes through UntrustedURL first (like Ghostty's OSC 8
+    /// handling in Ghostty.App.swift).
+    func terminalDidRequestOpenURL(_ string: String, kind _: TerminalOpenURLKind) {
+        switch UntrustedURL(string: string).decision {
+        case let .allow(url):
+            NSWorkspace.shared.open(url)
+        case let .confirm(url):
+            let handler = NSWorkspace.shared.urlForApplication(toOpen: url)?
+                .deletingPathExtension().lastPathComponent ?? "another app"
+            linkAlert("Open this link in \(handler)?", url.absoluteString, button: "Open") {
+                NSWorkspace.shared.open(url)
+            }
+        case let .deny(reason):
+            linkAlert("Kana didn't open this link", "\(string)\n\n\(reason)", button: nil, then: nil)
+        }
+    }
+
+    /// Cancel comes first, so Return doesn't open an untrusted link (as in
+    /// Ghostty). Shown on the next turn: this runs inside Ghostty's URL
+    /// callback with the renderer locked, and the sheet's focus change would
+    /// wait on that lock (Ghostty's UntrustedURLAlert defers the same way).
+    private func linkAlert(_ title: String, _ detail: String, button: String?, then action: (() -> Void)?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let window = self?.surfaceView.window, window.isVisible, window.attachedSheet == nil else { return }
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = detail
+            alert.alertStyle = action == nil ? .warning : .informational
+            alert.addButton(withTitle: button == nil ? "OK" : "Cancel")
+            if let button { alert.addButton(withTitle: button) }
+            alert.beginSheetModal(for: window) { response in
+                if response == .alertSecondButtonReturn { action?() }
+            }
+        }
+    }
+
+    func terminalDidUpdateHoverLink(_ url: String?) {
+        onHoverLink?(url)
     }
 
     func terminalDidClose(processAlive: Bool) {
