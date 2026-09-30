@@ -379,6 +379,8 @@ worktree-root = ../{repo}-kana
 | ⌘⇧Enter | Zoom pane |
 | ⌃⌘= | Equalize panes (or double-click a divider) |
 | ⌘W / ⌥⌘W | Close pane / close tab |
+| ⌘⇧T | Reopen closed tab (its splits and folders) |
+| ⌘⇧O | Session history: reopen an earlier run's windows |
 | ⌘Enter | Full screen |
 | ⌘⇧K | Command palette |
 | ⌘⇧H | History search |

@@ -8,15 +8,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var introPlayed = false
     private var appearanceObservation: NSKeyValueObservation?
 
+    // MARK: sessions
+
+    /// Every run is a session, saved as it goes: ⌘⇧O lists earlier ones.
+    private let sessions = SessionStore(directory: FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Kana/sessions"))
+    private let sessionID = Session.id(startedAt: Date())
+    private var lastSaved: [SessionWindow]?
+    private var autosave: Timer?
+    /// Closed tabs, newest last, for ⌘⇧T.
+    private var closedTabs: [SessionTab] = []
+    /// Set once quitting starts: macOS then closes the windows one by one,
+    /// and saving after each would shrink the session to nothing.
+    private var quitting = false
+
+    /// Writes this run's session when it changed. An empty one is never
+    /// written: closing the last window shouldn't wipe what was open.
+    private func saveSession() {
+        guard !quitting else { return }
+        let open = windows.map(\.session).filter { !$0.tabs.isEmpty }
+        guard !open.isEmpty, open != lastSaved else { return }
+        do {
+            try sessions.save(Session(id: sessionID, saved: Date(), windows: open))
+            lastSaved = open
+        } catch {
+            NSLog("Kana: couldn't save the session: %@", "\(error)")
+        }
+    }
+
+    /// ⌘⇧O: earlier sessions, newest first. Picking one opens its windows.
+    @objc func showSessionHistory(_: Any?) {
+        saveSession()
+        let now = Date()
+        let home = NSHomeDirectory()
+        let earlier = sessions.list().filter { $0.id != sessionID }
+        guard !earlier.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        let commands = earlier.map { session in
+            let summary = session.summary(now: now, calendar: .current, home: home)
+            return PaletteCommand(id: "session:\(session.id)", title: summary.title, subtitle: summary.subtitle) { [weak self] in
+                self?.restore(session)
+            }
+        }
+        if let active { active.togglePalette(commands) } else { restore(earlier[0]) }
+    }
+
+    private func restore(_ session: Session) {
+        for saved in session.windows { openWindow(restoring: saved) }
+    }
+
+    /// ⌘⇧T: the last closed tab, in the front window.
+    @objc func reopenClosedTab(_: Any?) {
+        guard let tab = closedTabs.popLast() else { return NSSound.beep() }
+        if let active { active.openTab(tab) } else { openWindow(restoring: SessionWindow(tabs: [tab])) }
+    }
+
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.mainMenu = makeMenu()
         quitCleanlyOnSIGTERM()
+        autosave = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveSession() }
+        }
         Notifier.shared.start()
         Notifier.shared.onOpen = { [weak self] paneID in
             guard let self, windows.contains(where: { $0.reveal(paneID: paneID) }) else { return }
             NSApp.activate(ignoringOtherApps: true)
         }
         newWindow(nil)
+        // KANA_DEBUG_RESTORE=1 restores the newest earlier session, as ⌘⇧O would
+        if ProcessInfo.processInfo.environment["KANA_DEBUG_RESTORE"] != nil,
+           let last = sessions.list().first(where: { $0.id != sessionID }) {
+            restore(last)
+        }
         NSApp.activate(ignoringOtherApps: true)
         reportConfigIssues()
         // a light:X,dark:Y theme swaps with the system appearance
@@ -71,7 +137,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: actions
 
+    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        saveSession()
+        quitting = true
+        return .terminateNow
+    }
+
     @objc func newWindow(_: Any?) {
+        openWindow(restoring: nil)
+    }
+
+    private func openWindow(restoring saved: SessionWindow?) {
         let playIntro: Bool
         switch settings.intro {
         case .on: playIntro = true
@@ -79,13 +155,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .firstWindow: playIntro = !introPlayed
         }
         introPlayed = true
-        let controller = KanaWindowController(settings: settings, skin: skin, playIntro: playIntro)
+        let controller = KanaWindowController(settings: settings, skin: skin, playIntro: playIntro, restoring: saved)
         controller.onClose = { [weak self] closed in
+            // saved while it's still listed, so the last window isn't lost
+            self?.saveSession()
             self?.windows.removeAll { $0 === closed }
             self?.updateDockBadge()
         }
+        controller.onLastTabClosing = { [weak self] in self?.saveSession() }
+        controller.onTabClosed = { [weak self] tab in
+            guard let self else { return }
+            closedTabs = (closedTabs + [tab]).suffix(20)
+        }
         controller.onAttentionChange = { [weak self] in self?.updateDockBadge() }
-        if let previous = active?.window {
+        if saved?.frame == nil, let previous = active?.window {
             controller.window?.setFrameTopLeftPoint(NSPoint(x: previous.frame.minX + 28, y: previous.frame.maxY - 28))
         }
         windows.append(controller)
@@ -230,6 +313,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var shell = [
             item("New Window", #selector(newWindow(_:)), "n", target: self),
             item("New Tab", #selector(newTab(_:)), "t", target: self),
+            item("Reopen Closed Tab", #selector(reopenClosedTab(_:)), "t", [.command, .shift], target: self),
+            item("Session History…", #selector(showSessionHistory(_:)), "o", [.command, .shift], target: self),
             .separator(),
             item("Close", #selector(close(_:)), "w", target: self),
             item("Close Tab", #selector(closeTab(_:)), "w", [.command, .option], target: self),

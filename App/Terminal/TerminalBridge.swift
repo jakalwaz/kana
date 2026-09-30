@@ -44,7 +44,7 @@ enum TerminalBridge {
     /// keybinds in Ghostty's src/config/Config.zig.
     private static let keysKanaOwns: [String] = {
         var keys = [
-            "super+q", "super+,", "super+shift+,", "super+shift+k", "super+shift+p",
+            "super+q", "super+,", "super+shift+,", "super+shift+k", "super+shift+p", "super+shift+t", "super+shift+o",
             "super+t", "super+n", "super+w", "super+alt+w", "super+shift+w", "super+shift+alt+w",
             "super+shift+[", "super+shift+]", "super+d", "super+shift+d", "super+[", "super+]",
             "super+shift+f", "super+alt+p", "super+alt+i", "super+ctrl+f", "super+enter",

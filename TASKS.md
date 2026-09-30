@@ -109,8 +109,8 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 | T1.7 | Quick terminal: global hotkey drop-down panel | claude | `App/Window/*`, `App/KanaApp.swift` | T1.2 | todo |
 | T1.8 | FuzzyMatch + CommandPaletteView (SwiftUI) per C4 | codex | `Core/FuzzyMatch.swift`, `App/Palette/**`, `Tests/KanaCoreTests/**` | C4 | done |
 | T1.9 | Palette commands for every action, theme switching, ⌘⇧K / ⌘⇧P | claude | `App/KanaApp.swift`, `App/Window/*` | T1.8 | review (needs Jak's checklist) |
-| T1.10 | Sessions per contract C5: layout ↔ SplitTree, summaries, a JSON store with pruning, Swift Testing tests | codex | `Core/Session.swift`, `Tests/KanaCoreTests/**` | C5 | doing |
-| T1.11 | Session history in the app: save each run as you go and on quit, ⌘⇧O history list (restore a session), ⌘⇧T reopen closed tab | claude | `App/**` | T1.10 contract | doing |
+| T1.10 | Sessions per contract C5: layout ↔ SplitTree, summaries, a JSON store with pruning, Swift Testing tests | codex | `Core/Session.swift`, `Tests/KanaCoreTests/**` | C5 | done |
+| T1.11 | Session history in the app: save each run as you go and on quit, ⌘⇧O history list (restore a session), ⌘⇧T reopen closed tab | claude | `App/**` | T1.10 contract | review (needs Jak's checklist) |
 
 ## Side quest: intro assets (Jak)
 
@@ -149,6 +149,12 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, codex + claude: session history (T1.10, T1.11), replacing macOS's "reopen windows?" prompt.**
+  - T1.10 (codex): `Core/Session.swift`: layout ↔ SplitTree, per-run ids, history summaries ("Today 14:02 · 2 windows · 5 tabs" plus folders), and a JSON store keeping 30. 18 tests.
+  - T1.11 (claude): each run saves to `~/Library/Application Support/Kana/sessions/` every 15 s when changed, on window and last-tab close, and on quit. ⌘⇧O lists earlier runs in the palette and opens the one you pick; ⌘⇧T reopens the last closed tab (splits, folders, focus, zoom). Scrollback isn't restored (Ghostty doesn't keep it).
+  - Found live: while quitting, AppKit closes windows one by one and each save shrank the session, so quitting now freezes it. Verified with a hand-written two-tab split session restored through `KANA_DEBUG_RESTORE=1`.
+  - Codex review round 1 found 4 bugs (a whole-tab close kept only the last pane, stale folders, restored focus overwritten, closing the last tab saved too late); round 2 found a stale snapshot when a sheet blocks the close. All fixed.
 
 - **2026-09-30, claude: startup fixes (Jak's report: two windows, animation sometimes missing, a "reopen windows?" prompt).**
   - Two windows: Ghostty appends Kana.app/Contents/MacOS to PATH, and macOS disks ignore case, so the welcome screen's `kana banner` ran the app binary `Kana` and opened a second Kana (seen with ps/sample). kana.zsh now puts the helper first and calls it by full path, and the app binary hands `kana <command>` calls to the helper (or exits) instead of opening a window.

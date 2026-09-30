@@ -9,12 +9,32 @@ final class Tab {
     var focused: TerminalPane
     let container = SplitContainerView()
 
+    /// For ⌘⇧T: the tab as it was when its closing began, taken before the
+    /// panes go (a whole-tab close takes them one by one).
+    var closing: SessionTab?
+
     init(pane: TerminalPane) {
         tree = SplitTree(leaf: pane)
         focused = pane
     }
 
+    init(tree: SplitTree<TerminalPane>, focused: TerminalPane) {
+        self.tree = tree
+        self.focused = focused
+    }
+
     var panes: [TerminalPane] { tree.leaves }
+
+    /// The tab as a session layout: panes' folders and titles, focus, zoom.
+    var session: SessionTab? {
+        let leaves = panes
+        guard let layout = SessionLayout(tree, pane: { ($0.workingDirectory, $0.title) }) else { return nil }
+        return SessionTab(
+            layout: layout,
+            focused: leaves.firstIndex { $0 === focused } ?? 0,
+            zoomed: tree.zoomed.flatMap { zoomed in leaves.firstIndex { $0 === zoomed } }
+        )
+    }
 }
 
 /// One Kana window: the header with tabs, and a split tree per tab.
@@ -55,10 +75,18 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     var onClose: ((KanaWindowController) -> Void)?
     private var palette: PaletteOverlay?
 
+    /// A tab closed: its layout, for ⌘⇧T.
+    var onTabClosed: ((SessionTab) -> Void)?
+    /// The window's last tab is about to go (the window closes after it):
+    /// the session is saved while it's still there.
+    var onLastTabClosing: (() -> Void)?
+
     /// A pane started or stopped wanting you: the dock badge needs a recount.
     var onAttentionChange: (() -> Void)?
 
-    init(settings: KanaSettings, skin: SkinInfo?, playIntro: Bool, workingDirectory: String? = nil) {
+    /// `restoring`: open a saved window (⌘⇧O) instead of one fresh tab.
+    init(settings: KanaSettings, skin: SkinInfo?, playIntro: Bool, workingDirectory: String? = nil,
+         restoring saved: SessionWindow? = nil) {
         self.settings = settings
         self.skin = skin
         nextBanner = !settings.banner ? .off : playIntro ? .animate : .still
@@ -100,9 +128,19 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         header.onClose = { [weak self] in self?.closeTab(at: $0) }
         header.onNewTab = { [weak self] in self?.newTab() }
 
-        newTab(workingDirectory: workingDirectory)
+        if let saved, !saved.tabs.isEmpty {
+            saved.tabs.forEach(openTab)
+            select(min(max(0, saved.selected), tabs.count - 1))
+        } else {
+            newTab(workingDirectory: workingDirectory)
+        }
         applyTheme()
         window.center()
+        if let f = saved?.frame, f.count == 4 {
+            let frame = NSRect(x: f[0], y: f[1], width: f[2], height: f[3])
+            // only where it's still on a screen
+            if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) { window.setFrame(frame, display: false) }
+        }
         layoutWindow()
     }
 
@@ -159,7 +197,31 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         let cwd = workingDirectory ?? currentPane?.workingDirectory
         let pane = makePane(banner: nextBanner, workingDirectory: cwd)
         if nextBanner == .animate, settings.intro != .on { nextBanner = .still }
-        let tab = Tab(pane: pane)
+        add(Tab(pane: pane))
+    }
+
+    /// A saved tab (a session, or ⌘⇧T): its layout with fresh shells in
+    /// the same folders, no welcome screen.
+    func openTab(_ saved: SessionTab) {
+        let tree = saved.layout.tree { directory, title in
+            let pane = makePane(banner: .off, workingDirectory: directory)
+            pane.title = title
+            return pane
+        }
+        let leaves = tree.leaves
+        guard let first = leaves.first else { return }
+        var restored = tree
+        if let zoomed = saved.zoomed, leaves.indices.contains(zoomed) { restored = tree.toggledZoom(leaves[zoomed]) }
+        let focused = leaves.indices.contains(saved.focused) ? leaves[saved.focused] : first
+        let tab = Tab(tree: restored, focused: focused)
+        add(tab)
+        // attaching each pane focused it in turn; put the saved focus back
+        tab.focused = focused
+        apply(tab)
+        if tab === currentTab { focused.session.focus() }
+    }
+
+    private func add(_ tab: Tab) {
         tab.container.onResize = { [weak self, weak tab] path, ratio in
             guard let self, let tab else { return }
             tab.tree = tab.tree.resizing(path, ratio: ratio)
@@ -245,6 +307,13 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     private func apply(_ tab: Tab) {
         tab.container.show(tab.tree, focused: tab.focused)
         syncVisibility()
+    }
+
+    /// Everything open here, for the session file.
+    var session: SessionWindow {
+        let frame = window.map { w in [w.frame.minX, w.frame.minY, w.frame.width, w.frame.height].map(Double.init) }
+        // a tab whose last pane just went is still in the snapshot, as it was
+        return SessionWindow(frame: frame, tabs: tabs.compactMap { $0.session ?? $0.closing }, selected: selected)
     }
 
     func select(_ index: Int) {
@@ -428,6 +497,7 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     func closeTab(at index: Int) {
         guard tabs.indices.contains(index), tabClose == nil else { return }
         let tab = tabs[index]
+        tab.closing = tab.session
         tabClose = (tab, [])
         for pane in tab.panes {
             pane.session.requestClose()
@@ -446,7 +516,11 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
             closeSheet?.panes = sheet.panes + panes.filter { new in !sheet.panes.contains { $0 === new } }
             return
         }
-        guard let window, window.attachedSheet == nil, let first = panes.first else { return }
+        guard let window, window.attachedSheet == nil, let first = panes.first else {
+            // nothing closes, so nothing to remember for ⌘⇧T
+            for pane in panes { tab(containing: pane)?.closing = nil }
+            return
+        }
         let alert = NSAlert()
         if panes.count == 1 {
             alert.messageText = "Close “\(first.title)”?"
@@ -462,7 +536,10 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
             guard let self else { return }
             let panes = closeSheet?.panes ?? []
             closeSheet = nil
-            guard response == .alertFirstButtonReturn else { return }
+            guard response == .alertFirstButtonReturn else {
+                for pane in panes { tab(containing: pane)?.closing = nil }
+                return
+            }
             panes.forEach(remove)
         }
     }
@@ -475,6 +552,7 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
             closeSheet?.panes = rest
             if rest.isEmpty, let window { window.endSheet(sheet.alert.window, returnCode: .abort) }
         }
+        if tab.panes.count == 1, tab.closing == nil { tab.closing = tab.session }
         let next = tab.focused === pane
             ? tab.tree.focusTarget(from: pane, .previous, in: tab.container.bounds)
             : tab.focused
@@ -494,6 +572,8 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     /// Closing a background tab keeps the current one selected.
     private func removeTab(_ tab: Tab) {
         guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
+        if tabs.count == 1 { onLastTabClosing?() }
+        if let closing = tab.closing { onTabClosed?(closing) }
         let current = currentTab
         tabs.remove(at: index)
         tab.container.removeFromSuperview()
