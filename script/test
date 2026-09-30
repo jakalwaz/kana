@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Run every test suite that exists. Usage: script/test
+source "$(dirname "$0")/_env.sh"
+failed=0
+
+echo "==> KanaSkins and KanaBanner (swift test)"
+if have_full_xcode; then
+    (cd Packages/KanaSkins && swift test) || failed=1
+    swift test || failed=1
+else
+    echo "    skipped: needs full Xcode (the Command Line Tools ship swift-testing without its macros)."
+    echo "    Fix: sudo xcodebuild -license accept   (then: sudo xcode-select -s /Applications/Xcode.app)"
+fi
+
+echo "==> zsh suggestions"
+zsh "$ROOT/script/test-shell.zsh" "$ROOT/App/Shell/zsh" || failed=1
+
+echo "==> tools/ascii"
+if [ -d tools/ascii/tests ]; then
+    PY="$ROOT/.venv/bin/python"; [ -x "$PY" ] || PY=python3
+    if "$PY" -c "import pytest" 2>/dev/null; then
+        "$PY" -m pytest -q tools/ascii/tests || failed=1
+    else
+        echo "    skipped: pytest isn't installed ($PY -m pip install pytest)"
+    fi
+else
+    echo "    no tests yet (T0.7)"
+fi
+
+echo "==> Kana app builds"
+swift build --product Kana 2>&1 | grep -E "error:|Build complete" | grep -v "search path" || failed=1
+
+[ $failed -eq 0 ] && echo "ALL OK" || { echo "SOME TESTS FAILED"; exit 1; }

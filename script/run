@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Build and launch Kana. Usage: script/run [debug|release]
+source "$(dirname "$0")/_env.sh"
+"$ROOT/script/build" "${1:-release}"
+# quit a running copy first so the new build is the one that opens
+pkill -x Kana 2>/dev/null && sleep 0.5 || true
+open "$ROOT/build/Kana.app"

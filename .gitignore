@@ -1,0 +1,24 @@
+# source clips and anything made from them never get committed
+assets/private/
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.kana
+!Resources/skins/default/*.kana
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.swiftpm/
+.build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store

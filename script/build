@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Build Kana.app into build/. Usage: script/build [debug|release] (default release)
+source "$(dirname "$0")/_env.sh"
+
+CONFIG="${1:-release}"
+echo "==> swift build -c $CONFIG"
+swift build -c "$CONFIG" --product Kana 2>&1 | grep -vE "search path '.*' not found" || true
+swift build -c "$CONFIG" --product kana-cli 2>&1 | grep -E "error:" || true
+BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+[ -x "$BIN_DIR/Kana" ] || { echo "build failed"; exit 1; }
+
+APP="$ROOT/build/Kana.app"
+echo "==> assembling $APP"
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$BIN_DIR/Kana" "$APP/Contents/MacOS/Kana"
+# SwiftPM resource bundles: Bundle.module looks in Contents/Resources first
+for bundle in "$BIN_DIR"/*.bundle; do
+    [ -d "$bundle" ] && cp -R "$bundle" "$APP/Contents/Resources/"
+done
+cp -R "$ROOT/App/Shell/zsh" "$APP/Contents/Resources/zsh"
+# the `kana` helper command (kana-cli in Package.swift, see the note there)
+mkdir -p "$APP/Contents/Resources/bin"
+cp "$BIN_DIR/kana-cli" "$APP/Contents/Resources/bin/kana"
+if [ -d "$ROOT/Resources/skins" ]; then
+    cp -R "$ROOT/Resources/skins" "$APP/Contents/Resources/skins"
+fi
+
+VERSION="0.1.0"
+cat > "$APP/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>Kana</string>
+    <key>CFBundleDisplayName</key><string>Kana</string>
+    <key>CFBundleIdentifier</key><string>dev.kana.Kana</string>
+    <key>CFBundleExecutable</key><string>Kana</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSArchitecturePriority</key><array><string>arm64</string></array>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+</dict>
+</plist>
+PLIST
+
+# ad hoc signature, so macOS will launch it (docs/KANA.md section 2)
+codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || echo "warning: codesign failed"
+echo "==> built $APP"

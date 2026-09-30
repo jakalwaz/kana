@@ -1,0 +1,160 @@
+import AppKit
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let settings = KanaSettings.load()
+    private var windows: [KanaWindowController] = []
+    private var introPlayed = false
+
+    func applicationDidFinishLaunching(_: Notification) {
+        NSApp.mainMenu = makeMenu()
+        newWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        scheduleDebugSnapshots()
+    }
+
+    /// KANA_DEBUG_SNAPSHOT=/some/prefix saves PNGs of the first window during
+    /// and after the intro, for checking the look without screen recording.
+    private func scheduleDebugSnapshots() {
+        guard let prefix = ProcessInfo.processInfo.environment["KANA_DEBUG_SNAPSHOT"] else { return }
+        for delay in [0.9, 1.6, 4.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let view = self?.windows.first?.window?.contentView,
+                      let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+                view.cacheDisplay(in: view.bounds, to: rep)
+                let url = URL(fileURLWithPath: "\(prefix)-\(delay).png")
+                try? rep.representation(using: .png, properties: [:])?.write(to: url)
+            }
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool { true }
+
+    func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool { true }
+
+    private var skin: SkinInfo? { SkinManager.find(settings: settings) }
+
+    private var active: KanaWindowController? {
+        windows.first { $0.window?.isKeyWindow == true } ?? windows.last
+    }
+
+    // MARK: actions
+
+    @objc func newWindow(_: Any?) {
+        let playIntro: Bool
+        switch settings.intro {
+        case .on: playIntro = true
+        case .off: playIntro = false
+        case .firstWindow: playIntro = !introPlayed
+        }
+        introPlayed = true
+        let controller = KanaWindowController(settings: settings, skin: skin, playIntro: playIntro)
+        controller.onClose = { [weak self] closed in
+            self?.windows.removeAll { $0 === closed }
+        }
+        if let previous = active?.window {
+            controller.window?.setFrameTopLeftPoint(NSPoint(x: previous.frame.minX + 28, y: previous.frame.maxY - 28))
+        }
+        windows.append(controller)
+        controller.showWindow(nil)
+    }
+
+    @objc func newTab(_: Any?) {
+        guard let active else { return newWindow(nil) }
+        active.newTab()
+    }
+
+    @objc func closeTab(_: Any?) { active?.closeCurrentTab() }
+    @objc func nextTab(_: Any?) { active?.selectNext() }
+    @objc func previousTab(_: Any?) { active?.selectPrevious() }
+    @objc func selectTab(_ sender: NSMenuItem) { active?.select(sender.tag) }
+    @objc func toggleFocusMode(_: Any?) { active?.toggleFocusMode() }
+
+    @objc func openConfigFolder(_: Any?) {
+        let dir = KanaSettings.configDirectory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(dir)
+    }
+
+    // MARK: menu
+
+    private func makeMenu() -> NSMenu {
+        let main = NSMenu()
+
+        func item(_ title: String, _ action: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) -> NSMenuItem {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = mods
+            item.target = target
+            return item
+        }
+        func submenu(_ title: String, _ items: [NSMenuItem]) {
+            let menu = NSMenu(title: title)
+            items.forEach(menu.addItem)
+            let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            holder.submenu = menu
+            main.addItem(holder)
+        }
+
+        submenu("Kana", [
+            item("About Kana", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp),
+            .separator(),
+            item("Open Config Folder", #selector(openConfigFolder(_:)), ",", target: self),
+            .separator(),
+            item("Hide Kana", #selector(NSApplication.hide(_:)), "h", target: NSApp),
+            item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),
+            .separator(),
+            item("Quit Kana", #selector(NSApplication.terminate(_:)), "q", target: NSApp),
+        ])
+
+        var shell = [
+            item("New Window", #selector(newWindow(_:)), "n", target: self),
+            item("New Tab", #selector(newTab(_:)), "t", target: self),
+            .separator(),
+            item("Close Tab", #selector(closeTab(_:)), "w", target: self),
+            item("Close Window", #selector(NSWindow.performClose(_:)), "w", [.command, .shift]),
+            .separator(),
+            item("Next Tab", #selector(nextTab(_:)), "]", [.command, .shift], target: self),
+            item("Previous Tab", #selector(previousTab(_:)), "[", [.command, .shift], target: self),
+        ]
+        for i in 1 ... 9 {
+            let tab = item("Tab \(i)", #selector(selectTab(_:)), "\(i)", target: self)
+            tab.tag = i - 1
+            tab.isAlternate = false
+            shell.append(tab)
+        }
+        submenu("Shell", shell)
+
+        submenu("Edit", [
+            item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Paste", #selector(NSText.paste(_:)), "v"),
+            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+        ])
+
+        submenu("View", [
+            item("Focus Mode", #selector(toggleFocusMode(_:)), "f", [.command, .shift], target: self),
+            .separator(),
+            item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
+        ])
+
+        submenu("Window", [
+            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            item("Zoom", #selector(NSWindow.performZoom(_:))),
+        ])
+        NSApp.windowsMenu = main.items.last?.submenu
+
+        return main
+    }
+}
+
+@main
+enum KanaMain {
+    static func main() {
+        MainActor.assumeIsolated {
+            let app = NSApplication.shared
+            let delegate = AppDelegate()
+            app.setActivationPolicy(.regular)
+            app.delegate = delegate
+            withExtendedLifetime(delegate) { app.run() }
+        }
+    }
+}
