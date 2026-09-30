@@ -69,6 +69,10 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 
 `~/.config/kana/config` parsing, and rendering it into the Ghostty config file the app loads. **The API is the stub in `Core/KanaConfig.swift`** (signatures plus doc comments). Kana's own keys (`skin`, `intro`, `banner`, `suggestions`, `notify-on-command-finish[-after]`, `quick-terminal-hotkey`, `theme`) are parsed into fields. Every other line passes to Ghostty unchanged and in order. `renderGhostty` writes Kana's defaults, then the user's lines, then the resolved theme, then Kana's enforced lines last.
 
+### C4: Command palette (KanaCore + App/Palette)
+
+`Core/FuzzyMatch.swift` (`FuzzyMatch.match(_:in:)`, `FuzzyRanker.rank`) and `App/Palette/PaletteCommand.swift` (`PaletteCommand { id, title, subtitle?, shortcut?, run }`) hold the API as stubs with doc comments. T1.8 builds `CommandPaletteView(commands:onDismiss:)` on them; T1.9 supplies the commands and hosts the view.
+
 ---
 
 ## Phase 0: Engine spike
@@ -99,7 +103,7 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 | T1.5 | Notifications (command finished, OSC 9/777, bell), tab attention dot + dock badge, progress bar, ⌘-click URLs + hover preview | claude | `App/Notify/*`, `App/Terminal/*`, `App/Window/*` | T1.2 | todo |
 | T1.6 | Find in scrollback: ⌘F bar, ⌘G / ⇧⌘G, ⌘E | claude | `App/Window/*`, `App/Terminal/*` | T1.2 | todo |
 | T1.7 | Quick terminal: global hotkey drop-down panel | claude | `App/Window/*`, `App/KanaApp.swift` | T1.2 | todo |
-| T1.8 | FuzzyMatch + CommandPaletteView (SwiftUI) per C4 | codex | `Core/FuzzyMatch.swift`, `App/Palette/**`, `Tests/KanaCoreTests/**` | C4 (to write) | todo |
+| T1.8 | FuzzyMatch + CommandPaletteView (SwiftUI) per C4 | codex | `Core/FuzzyMatch.swift`, `App/Palette/**`, `Tests/KanaCoreTests/**` | C4 | doing |
 | T1.9 | Palette commands for every action, theme switching, ⌘⇧K / ⌘⇧P | claude | `App/KanaApp.swift`, `App/Window/*` | T1.8 | todo |
 
 ## Side quest: intro assets (Jak)
