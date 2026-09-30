@@ -1,56 +1,91 @@
 import Foundation
+import KanaCore
 
-/// The handful of settings Kana reads today, from `~/.config/kana/config`
-/// (Ghostty-style `key = value`, see docs/KANA.md section 11).
+/// `~/.config/kana/config` (docs/KANA.md section 11): Ghostty's format. Kana's
+/// own keys are read here; every other line is Ghostty's and goes into the
+/// config file TerminalBridge renders (KanaConfig, contract C3).
 struct KanaSettings: Sendable {
-    enum IntroMode: String, Sendable { case on, off, firstWindow = "first-window" }
+    typealias IntroMode = KanaConfig.IntroMode
+
+    var config = KanaConfig()
+    var accentHex = "#e0262f"
 
     /// A skin folder name; "default" ships in the app bundle.
-    var skin = "default"
-    var intro = IntroMode.on
-    var banner = true
-    var suggestions = true
-    var fontSize = 13.0
-    var fontFamily: String?
-    var accentHex = "#e0262f"
+    var skin: String { config.skin }
+    var intro: IntroMode { config.intro }
+    var banner: Bool { config.banner }
+    var suggestions: Bool { config.suggestions }
 
     static var configDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/kana")
     }
 
+    static var configFile: URL { configDirectory.appendingPathComponent("config") }
+
+    /// A missing file is fine: everything has a default.
     static func load() -> KanaSettings {
-        var settings = KanaSettings()
-        let url = configDirectory.appendingPathComponent("config")
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return settings }
-        for (key, value) in parse(text) {
-            switch key {
-            case "skin": settings.skin = value
-            case "intro": settings.intro = IntroMode(rawValue: value) ?? settings.intro
-            case "banner": settings.banner = isOn(value)
-            case "suggestions": settings.suggestions = isOn(value)
-            case "font-size": settings.fontSize = Double(value) ?? settings.fontSize
-            case "font-family": settings.fontFamily = value.isEmpty ? nil : value
-            default: break
-            }
-        }
-        return settings
+        let text = (try? String(contentsOf: configFile, encoding: .utf8)) ?? ""
+        return KanaSettings(config: KanaConfig.parse(text, configDirectory: configDirectory))
+    }
+}
+
+/// Colour themes: `~/.config/kana/themes/<name>` first, then the ones bundled
+/// in Kana.app (iTerm2-Color-Schemes, vendored by tools/themes).
+enum ThemeLibrary {
+    static var directories: [URL] {
+        var dirs = [KanaSettings.configDirectory.appendingPathComponent("themes")]
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("themes") { dirs.append(bundled) }
+        return dirs
     }
 
-    static func parse(_ text: String) -> [(String, String)] {
-        text.split(whereSeparator: \.isNewline).compactMap { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.hasPrefix("#"), let eq = trimmed.firstIndex(of: "=") else { return nil }
-            let key = trimmed[..<eq].trimmingCharacters(in: .whitespaces)
-            var value = trimmed[trimmed.index(after: eq)...].trimmingCharacters(in: .whitespaces)
-            if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") {
-                value = String(value.dropFirst().dropLast())
-            }
-            return key.isEmpty ? nil : (key, value)
-        }
+    /// The theme file for a name, or nil to leave it to Ghostty (an absolute
+    /// path, or a name we don't have).
+    static func path(for name: String) -> String? {
+        guard !name.hasPrefix("/"), !name.contains("/") else { return nil }
+        return directories
+            .map { $0.appendingPathComponent(name).path }
+            .first { FileManager.default.fileExists(atPath: $0) }
     }
 
-    private static func isOn(_ value: String) -> Bool {
-        !["off", "false", "no", "0"].contains(value.lowercased())
+    /// `light:X,dark:Y` split into its two names, or nil for a single theme.
+    static func pair(_ theme: String) -> (light: String, dark: String)? {
+        var light: String?, dark: String?
+        // commas inside quotes belong to the name
+        var parts: [String] = [], current = "", quoted = false
+        for c in theme {
+            if c == "\"" { quoted.toggle() }
+            if c == ",", !quoted { parts.append(current); current = "" } else { current.append(c) }
+        }
+        parts.append(current)
+        for part in parts where !part.trimmingCharacters(in: .whitespaces).isEmpty {
+            let side = part.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            guard side.count == 2 else { return nil }
+            let name = side[1].trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            if side[0] == "light" { light = name } else if side[0] == "dark" { dark = name } else { return nil }
+        }
+        guard let light, let dark else { return nil }
+        return (light, dark)
+    }
+
+    /// A theme file's `background`, for window chrome when Ghostty's own
+    /// resolved colour can't be trusted (a light/dark pair after the system
+    /// appearance changes).
+    static func background(ofTheme name: String) -> String? {
+        guard let path = path(for: name) ?? (name.hasPrefix("/") ? name : nil),
+              let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        for line in text.split(whereSeparator: \.isNewline) {
+            let kv = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+            if kv.count == 2, kv[0] == "background" { return kv[1].trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
+        }
+        return nil
+    }
+
+    /// Every theme name, sorted, for the palette.
+    static var names: [String] {
+        let all = directories.flatMap { (try? FileManager.default.contentsOfDirectory(atPath: $0.path)) ?? [] }
+        return Set(all.filter { !$0.hasPrefix(".") && $0 != "LICENSE" }).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
     }
 }
 

@@ -14,6 +14,9 @@ struct SkinInfo: Sendable {
 enum SkinManager {
     private static var cache: SkinInfo??
 
+    /// ⌘⇧, may have picked another skin.
+    static func invalidate() { cache = nil }
+
     static func find(settings: KanaSettings) -> SkinInfo? {
         if let cache { return cache }
         var found: SkinInfo?
@@ -43,6 +46,12 @@ enum SkinManager {
 }
 
 extension NSColor {
+    /// Relative luminance above the midpoint: dark text reads better on it.
+    var isLight: Bool {
+        guard let rgb = usingColorSpace(.sRGB) else { return false }
+        return 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent + 0.0722 * rgb.blueComponent > 0.5
+    }
+
     convenience init?(hex: String) {
         let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
         guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }

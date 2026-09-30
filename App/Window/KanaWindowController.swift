@@ -23,8 +23,20 @@ final class Tab {
 /// BaseTerminalController.swift for splits, close confirmation and occlusion.
 @MainActor
 final class KanaWindowController: NSWindowController, NSWindowDelegate {
-    private let settings: KanaSettings
-    private let skin: SkinInfo?
+    /// Replaced on ⌘⇧,; new tabs and splits use the latest.
+    var settings: KanaSettings {
+        didSet {
+            if !settings.banner {
+                nextBanner = .off
+            } else if nextBanner == .off || settings.intro != .firstWindow {
+                nextBanner = settings.intro == .on ? .animate : .still
+            }
+        }
+    }
+
+    var skin: SkinInfo? {
+        didSet { header.accent = NSColor(hex: skin?.accentHex ?? settings.accentHex) ?? .systemRed }
+    }
     private let header = HeaderBar()
     private let content = NSView()
     private var tabs: [Tab] = []
@@ -82,6 +94,7 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
         header.onNewTab = { [weak self] in self?.newTab() }
 
         newTab(workingDirectory: workingDirectory)
+        applyTheme()
         window.center()
         layoutWindow()
     }
@@ -90,6 +103,20 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
     required init?(coder _: NSCoder) { fatalError() }
 
     // MARK: layout
+
+    /// Window, header and split backgrounds follow the terminal's theme.
+    /// Runs after the first tab (which loads the config) and on ⌘⇧,.
+    func applyTheme() {
+        // a light/dark pair follows the system; one theme pins what suits it
+        let pair = settings.config.theme.flatMap(ThemeLibrary.pair) != nil
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let background = TerminalBridge.backgroundColor(settings: settings, dark: dark)
+        window?.backgroundColor = background
+        window?.appearance = pair ? nil : NSAppearance(named: background.isLight ? .aqua : .darkAqua)
+        window?.contentView?.layer?.backgroundColor = background.cgColor
+        header.background = background
+        for tab in tabs { tab.container.background = background }
+    }
 
     private func layoutWindow() {
         guard let root = window?.contentView else { return }
@@ -136,6 +163,7 @@ final class KanaWindowController: NSWindowController, NSWindowDelegate {
             tab.tree = tab.tree.equalized()
             apply(tab)
         }
+        tab.container.background = header.background
         tabs.append(tab)
         content.addSubview(tab.container)
         tab.container.frame = content.bounds

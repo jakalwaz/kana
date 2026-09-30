@@ -14,6 +14,11 @@ final class SplitContainerView: NSView {
     var onResize: ((SplitPath, Double) -> Void)?
     var onEqualize: (() -> Void)?
 
+    /// The terminal background, behind panes while they resize.
+    var background = NSColor.black {
+        didSet { layer?.backgroundColor = background.cgColor; dividerViews.forEach { $0.ink = background.isLight ? .black : .white } }
+    }
+
     private var tree: SplitTree<TerminalPane>?
     private weak var focused: TerminalPane?
     private var dividerViews: [DividerView] = []
@@ -64,6 +69,7 @@ final class SplitContainerView: NSView {
 
         while dividerViews.count < layout.dividers.count {
             let view = DividerView()
+            view.ink = background.isLight ? .black : .white
             view.onDrag = { [weak self] path, ratio in self?.onResize?(path, ratio) }
             view.onDoubleClick = { [weak self] in self?.onEqualize?() }
             addSubview(view, positioned: .above, relativeTo: nil)
@@ -95,13 +101,14 @@ private final class DividerView: NSView {
 
     var onDrag: ((SplitPath, Double) -> Void)?
     var onDoubleClick: (() -> Void)?
+    var ink = NSColor.white { didSet { needsDisplay = true } }
 
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func draw(_: NSRect) {
         guard let divider else { return }
-        NSColor(white: 1, alpha: 0.12).setFill()
+        ink.withAlphaComponent(0.12).setFill()
         convert(divider.rect, from: superview).fill()
     }
 

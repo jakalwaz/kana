@@ -104,7 +104,7 @@ public struct Banner {
 
         // head: top border, wordmark
         var headLines: [String] = []
-        let title = " " + Ansi.paint("Kana", .white, bold: true) + " " + Ansi.paint("カナ", accent)
+        let title = " " + Ansi.plain("Kana", bold: true) + " " + Ansi.paint("カナ", accent)
             + " " + Ansi.paint(Self.version, .grey) + " "
         let titleWidth = Ansi.visibleWidth(title)
         headLines.append(Ansi.paint("╭───", border) + title
@@ -212,7 +212,7 @@ public struct Banner {
         let keyWidth = section.items.map { Ansi.visibleWidth($0.0) }.max() ?? 0
         for (keys, what) in section.items {
             let bullet = keys == "✦" || keys == "◇"
-            let k = bullet ? Ansi.paint(keys, keys == "✦" ? accent : .dim) : Ansi.paint(keys, .white, bold: true)
+            let k = bullet ? Ansi.paint(keys, keys == "✦" ? accent : .dim) : Ansi.plain(keys, bold: true)
             out.append(Ansi.fit(" " + Ansi.fit(k, bullet ? 1 : keyWidth) + "  " + Ansi.paint(what, .grey), width))
         }
         return out
@@ -231,7 +231,7 @@ public struct Banner {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         var cwd = o.workingDirectory
         if cwd == home { cwd = "~" } else if cwd.hasPrefix(home + "/") { cwd = "~" + cwd.dropFirst(home.count) }
-        let where_ = " " + Ansi.paint(cwd, .white) + (o.skinName.map { Ansi.paint(" · skin " + $0.lowercased(), .grey) } ?? "") + " "
+        let where_ = " " + Ansi.plain(cwd) + (o.skinName.map { Ansi.paint(" · skin " + $0.lowercased(), .grey) } ?? "") + " "
         let hint = " " + Ansi.paint("kana keys", accent) + Ansi.paint(" for this list · ", .grey)
             + Ansi.paint("kana", accent) + Ansi.paint(" replays the intro", .grey) + " "
         let plain = Ansi.paint("╰" + String(repeating: "─", count: width - 2) + "╯", border)

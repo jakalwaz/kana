@@ -22,9 +22,11 @@ cp -R "$ROOT/App/Shell/zsh" "$APP/Contents/Resources/zsh"
 # the `kana` helper command (kana-cli in Package.swift, see the note there)
 mkdir -p "$APP/Contents/Resources/bin"
 cp "$BIN_DIR/kana-cli" "$APP/Contents/Resources/bin/kana"
-if [ -d "$ROOT/Resources/skins" ]; then
-    cp -R "$ROOT/Resources/skins" "$APP/Contents/Resources/skins"
-fi
+for dir in skins themes; do
+    if [ -d "$ROOT/Resources/$dir" ]; then
+        cp -R "$ROOT/Resources/$dir" "$APP/Contents/Resources/$dir"
+    fi
+done
 
 VERSION="0.1.0"
 cat > "$APP/Contents/Info.plist" <<PLIST

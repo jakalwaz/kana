@@ -3,14 +3,20 @@ import KanaCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let settings = KanaSettings.load()
+    private var settings = KanaSettings.load()
     private var windows: [KanaWindowController] = []
     private var introPlayed = false
+    private var appearanceObservation: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.mainMenu = makeMenu()
         newWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+        reportConfigIssues()
+        // a light:X,dark:Y theme swaps with the system appearance
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in self?.windows.forEach { $0.applyTheme() } }
+        }
         scheduleDebugSnapshots()
     }
 
@@ -90,6 +96,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func selectTab(_ sender: NSMenuItem) { active?.select(sender.tag) }
     @objc func toggleFocusMode(_: Any?) { active?.toggleFocusMode() }
 
+    /// ⌘⇧,: re-reads the config. Ghostty settings (fonts, theme, keybinds)
+    /// change in every open terminal; Kana's own (banner, suggestions) apply
+    /// to new tabs.
+    @objc func reloadConfig(_: Any?) {
+        settings = KanaSettings.load()
+        TerminalBridge.reload(settings: settings)
+        SkinManager.invalidate()
+        for window in windows {
+            window.settings = settings
+            window.skin = skin
+            window.applyTheme()
+        }
+        reportConfigIssues()
+    }
+
+    /// Config mistakes show as a sheet rather than being silently ignored.
+    private func reportConfigIssues() {
+        let issues = TerminalBridge.configurationIssues(settings: settings)
+        guard !issues.isEmpty, let window = active?.window, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Problems in your Kana config"
+        alert.informativeText = issues.prefix(8).joined(separator: "\n")
+            + (issues.count > 8 ? "\n…and \(issues.count - 8) more" : "")
+            + "\n\n" + KanaSettings.configFile.path
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Open Config Folder")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertSecondButtonReturn { self?.openConfigFolder(nil) }
+        }
+    }
+
     @objc func openConfigFolder(_: Any?) {
         let dir = KanaSettings.configDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -119,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("About Kana", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp),
             .separator(),
             item("Open Config Folder", #selector(openConfigFolder(_:)), ",", target: self),
+            item("Reload Config", #selector(reloadConfig(_:)), ",", [.command, .shift], target: self),
             .separator(),
             item("Hide Kana", #selector(NSApplication.hide(_:)), "h", target: NSApp),
             item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option], target: NSApp),

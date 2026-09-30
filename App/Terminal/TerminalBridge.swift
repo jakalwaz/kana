@@ -9,40 +9,27 @@
 
 import AppKit
 import GhosttyTerminal
+import KanaCore
 
-/// Kana's terminal look: pure black, one accent colour.
+/// Kana's terminal look: pure black, one accent colour. Ghostty config
+/// lines, used unless the config picks a `theme`.
 enum KanaTheme {
-    static let background = "000000"
-    static let foreground = "E6E6E6"
-
-    static func configuration(accentHex: String) -> TerminalConfiguration {
+    static func lines(accentHex: String) -> [KanaConfig.GhosttyLine] {
         let accent = accentHex.replacingOccurrences(of: "#", with: "")
-        return TerminalConfiguration { b in
-            b.withBackground(background)
-            b.withForeground(foreground)
-            b.withCursorColor(accent)
-            b.withCursorText(background)
-            b.withSelectionBackground("2B2B2B")
-            b.withSelectionForeground("FFFFFF")
+        let palette = [
             // Normal 0-7
-            b.withPalette(0, color: "#1A1A1A")
-            b.withPalette(1, color: "#\(accent)")
-            b.withPalette(2, color: "#5FD38D")
-            b.withPalette(3, color: "#F2C063")
-            b.withPalette(4, color: "#5FA8FF")
-            b.withPalette(5, color: "#C78CFF")
-            b.withPalette(6, color: "#4FD6D6")
-            b.withPalette(7, color: "#D0D0D0")
+            "1A1A1A", accent, "5FD38D", "F2C063", "5FA8FF", "C78CFF", "4FD6D6", "D0D0D0",
             // Bright 8-15. 8 is the grey of inline suggestions: readable, but quiet.
-            b.withPalette(8, color: "#666666")
-            b.withPalette(9, color: "#FF4B55")
-            b.withPalette(10, color: "#7EF0A8")
-            b.withPalette(11, color: "#FFD580")
-            b.withPalette(12, color: "#8CC4FF")
-            b.withPalette(13, color: "#DDB0FF")
-            b.withPalette(14, color: "#7EF0F0")
-            b.withPalette(15, color: "#FFFFFF")
-        }
+            "666666", "FF4B55", "7EF0A8", "FFD580", "8CC4FF", "DDB0FF", "7EF0F0", "FFFFFF",
+        ]
+        return [
+            .init("background", "000000"),
+            .init("foreground", "E6E6E6"),
+            .init("cursor-color", accent),
+            .init("cursor-text", "000000"),
+            .init("selection-background", "2B2B2B"),
+            .init("selection-foreground", "FFFFFF"),
+        ] + palette.enumerated().map { .init("palette", "\($0.offset)=#\($0.element)") }
     }
 }
 
@@ -57,7 +44,7 @@ enum TerminalBridge {
     /// keybinds in Ghostty's src/config/Config.zig.
     private static let keysKanaOwns: [String] = {
         var keys = [
-            "super+q", "super+,",
+            "super+q", "super+,", "super+shift+,",
             "super+t", "super+n", "super+w", "super+alt+w", "super+shift+w", "super+shift+alt+w",
             "super+shift+[", "super+shift+]", "super+d", "super+shift+d", "super+[", "super+]",
             "super+shift+f", "super+alt+p", "super+alt+i", "super+ctrl+f", "super+enter",
@@ -69,30 +56,95 @@ enum TerminalBridge {
         return keys
     }()
 
+    /// Kana's defaults, under anything in the user's config.
+    private static let baseLines: [KanaConfig.GhosttyLine] = [
+        .init("font-size", "13"),
+        .init("font-thicken", "false"),
+        .init("cursor-style", "bar"),
+        .init("cursor-style-blink", "true"),
+        .init("background-opacity", "1"),
+        .init("window-padding-x", "14"),
+        .init("window-padding-y", "8"),
+        .init("window-padding-balance", "true"),
+        .init("mouse-hide-while-typing", "true"),
+        .init("shell-integration-features", "cursor,title"),
+    ]
+
+    /// Where the rendered Ghostty config lives. Kept (not in tmp) so it's
+    /// easy to look at when a setting doesn't do what you expect.
+    static var ghosttyConfigFile: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Kana/ghostty.conf")
+    }
+
     static func controller(settings: KanaSettings) -> TerminalController {
         if let controller { return controller }
-        let dark = KanaTheme.configuration(accentHex: settings.accentHex)
-        let made = TerminalController(theme: TerminalTheme(light: dark, dark: dark)) { b in
-            b.withFontSize(Float(settings.fontSize))
-            if let family = settings.fontFamily { b.withFontFamily(family) }
-            b.withFontThicken(false)
-            b.withCursorStyle(.bar)
-            b.withCursorStyleBlink(true)
-            b.withBackgroundOpacity(1)
-            b.withWindowPaddingX(14)
-            b.withWindowPaddingY(8)
-            b.withCustom("window-padding-balance", "true")
-            b.withCustom("mouse-hide-while-typing", "true")
-            b.withCustom("shell-integration-features", "cursor,title")
-            for key in keysKanaOwns {
-                b.withCustom("keybind", "\(key)=unbind")
-            }
-        }
-        if let issue = made.lastConfigurationIssue {
-            NSLog("Kana: ghostty config issue: %@", issue)
-        }
+        writeGhosttyConfig(settings)
+        // An empty theme: the wrapper's default (Afterglow) would otherwise
+        // be applied over the file and win over the user's theme.
+        let made = TerminalController(configSource: .file(ghosttyConfigFile.path), theme: TerminalTheme())
         controller = made
         return made
+    }
+
+    /// ⌘⇧,: the config file again, into every running terminal. Kana's own
+    /// keys (skin, banner...) apply to new tabs.
+    static func reload(settings: KanaSettings) {
+        // a stale file would reload silently, so a failed write stops here
+        guard writeGhosttyConfig(settings) else { return }
+        controller?.updateConfigSource(.file(ghosttyConfigFile.path))
+    }
+
+    /// The terminal background, for the window chrome. Ghostty's resolved
+    /// colour, except with a `light:X,dark:Y` theme, where it's read from the
+    /// side that matches the system appearance (the resolved one goes stale
+    /// when the appearance changes).
+    static func backgroundColor(settings: KanaSettings, dark: Bool) -> NSColor {
+        // an explicit `background` in the config beats any theme, in Ghostty too
+        let explicit = settings.config.ghostty.last { $0.key == "background" }?.value
+        if let theme = settings.config.theme, ThemeLibrary.pair(theme) != nil, let explicit,
+           let color = NSColor(hex: explicit.trimmingCharacters(in: CharacterSet(charactersIn: "\"")))
+        {
+            return color
+        }
+        if let theme = settings.config.theme, let pair = ThemeLibrary.pair(theme),
+           let hex = ThemeLibrary.background(ofTheme: dark ? pair.dark : pair.light),
+           let color = NSColor(hex: hex)
+        {
+            return color
+        }
+        guard let color = controller?.backgroundColor else { return .black }
+        return NSColor(srgbRed: CGFloat(color.red) / 255, green: CGFloat(color.green) / 255,
+                       blue: CGFloat(color.blue) / 255, alpha: 1)
+    }
+
+    /// Problems with the user's config: Kana's parser, then writing the
+    /// file, then Ghostty's (unknown keys, bad values).
+    static func configurationIssues(settings: KanaSettings) -> [String] {
+        settings.config.issues + [writeIssue, controller?.lastConfigurationIssue].compactMap { $0 }
+    }
+
+    private static var writeIssue: String?
+
+    @discardableResult
+    private static func writeGhosttyConfig(_ settings: KanaSettings) -> Bool {
+        let colors = settings.config.theme == nil ? KanaTheme.lines(accentHex: settings.accentHex) : []
+        let text = settings.config.renderGhostty(
+            defaults: baseLines + colors,
+            enforced: keysKanaOwns.map { .init("keybind", "\($0)=unbind") },
+            resolveTheme: ThemeLibrary.path(for:)
+        )
+        let file = ghosttyConfigFile
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(("# Written by Kana from ~/.config/kana/config. Edit that file, not this one.\n" + text).utf8)
+                .write(to: file, options: .atomic)
+            writeIssue = nil
+            return true
+        } catch {
+            writeIssue = "couldn't write \(file.path): \(error.localizedDescription)"
+            return false
+        }
     }
 }
 

@@ -27,6 +27,10 @@ else
     echo "    no tests yet (T0.7)"
 fi
 
+echo "==> tools/themes"
+python3 -m unittest discover -s tools/themes 2>&1 | tail -1
+python3 -m unittest discover -s tools/themes >/dev/null 2>&1 || failed=1
+
 echo "==> Kana app builds"
 swift build --product Kana 2>&1 | grep -E "error:|Build complete" | grep -v "search path" || failed=1
 

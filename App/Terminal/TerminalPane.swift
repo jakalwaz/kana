@@ -20,7 +20,7 @@ final class TerminalPane: NSView {
         self.workingDirectory = workingDirectory
         super.init(frame: NSRect(x: 0, y: 0, width: 900, height: 600))
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
+        // transparent: the tab's themed container shows through while it resizes
         addSubview(session.view)
         veil.wantsLayer = true
         veil.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.3).cgColor

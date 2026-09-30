@@ -12,6 +12,12 @@ final class HeaderBar: NSView {
     var titles: [String] = [] { didSet { needsDisplay = true } }
     var selectedIndex = 0 { didSet { needsDisplay = true } }
     var accent = NSColor.systemRed { didSet { needsDisplay = true } }
+    /// The terminal's background; text and pills flip dark on light themes.
+    var background = NSColor.black { didSet { needsDisplay = true } }
+
+    private func ink(_ alpha: CGFloat) -> NSColor {
+        (background.isLight ? NSColor.black : NSColor.white).withAlphaComponent(alpha)
+    }
 
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
@@ -81,9 +87,9 @@ final class HeaderBar: NSView {
     // MARK: drawing
 
     override func draw(_: NSRect) {
-        NSColor.black.setFill()
+        background.setFill()
         bounds.fill()
-        NSColor(white: 1, alpha: 0.07).setFill()
+        ink(0.07).setFill()
         NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
 
         for (i, title) in titles.enumerated() {
@@ -92,16 +98,16 @@ final class HeaderBar: NSView {
 
         let plus = plusRect
         if hoverPlus {
-            NSColor(white: 1, alpha: 0.08).setFill()
+            ink(0.08).setFill()
             NSBezierPath(roundedRect: plus, xRadius: 6, yRadius: 6).fill()
         }
-        let plusColor = NSColor(white: 1, alpha: hoverPlus ? 0.85 : 0.4)
+        let plusColor = ink(hoverPlus ? 0.85 : 0.4)
         drawCentered("+", in: plus, font: .systemFont(ofSize: 15, weight: .light), color: plusColor)
 
         guard showsWordmark else { return }
         let mark = NSAttributedString(string: "カナ", attributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: NSColor(white: 1, alpha: 0.28),
+            .foregroundColor: ink(0.28),
         ])
         let size = mark.size()
         let dot = NSRect(x: bounds.width - size.width - 30, y: bounds.midY - 3, width: 6, height: 6)
@@ -115,7 +121,7 @@ final class HeaderBar: NSView {
         let selected = i == selectedIndex
         let hovered = i == hoverIndex
         if selected || hovered {
-            NSColor(white: 1, alpha: selected ? 0.09 : 0.05).setFill()
+            ink(selected ? 0.09 : 0.05).setFill()
             NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7).fill()
         }
         if selected {
@@ -127,7 +133,7 @@ final class HeaderBar: NSView {
         // narrow tabs show just a dot (grey unless selected) and the ×
         guard textRect.width >= 16 else {
             if !selected {
-                NSColor(white: 1, alpha: 0.3).setFill()
+                ink(0.3).setFill()
                 NSBezierPath(ovalIn: NSRect(x: rect.minX + 10, y: rect.midY - 2.5, width: 5, height: 5)).fill()
             }
             return drawClose(i, rect: rect, selected: selected, hovered: hovered)
@@ -136,7 +142,7 @@ final class HeaderBar: NSView {
         style.lineBreakMode = .byTruncatingHead
         let text = NSAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: selected ? .medium : .regular),
-            .foregroundColor: NSColor(white: 1, alpha: selected ? 0.92 : 0.45),
+            .foregroundColor: ink(selected ? 0.92 : 0.45),
             .paragraphStyle: style,
         ])
         let h = text.size().height
@@ -148,11 +154,11 @@ final class HeaderBar: NSView {
         guard hovered || (selected && titles.count > 1) else { return }
         let close = closeRect(i)
         if hovered, hoverClose {
-            NSColor(white: 1, alpha: 0.12).setFill()
+            ink(0.12).setFill()
             NSBezierPath(roundedRect: close, xRadius: 4, yRadius: 4).fill()
         }
         drawCentered("×", in: close, font: .systemFont(ofSize: 12, weight: .regular),
-                     color: NSColor(white: 1, alpha: hovered && hoverClose ? 0.9 : 0.4))
+                     color: ink(hovered && hoverClose ? 0.9 : 0.4))
     }
 
     private func drawCentered(_ s: String, in rect: NSRect, font: NSFont, color: NSColor) {

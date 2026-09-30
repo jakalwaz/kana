@@ -13,6 +13,11 @@ public enum Ansi {
         (bold ? Ansi.bold : "") + fg(c) + text + reset
     }
 
+    /// In the terminal's own foreground, so it reads on any theme, light or dark.
+    public static func plain(_ text: String, bold: Bool = false) -> String {
+        (bold ? Ansi.bold : "") + text + reset
+    }
+
     /// Columns a string takes on screen: escape sequences take none, East
     /// Asian wide characters (カナ) take two.
     public static func visibleWidth(_ s: String) -> Int {

@@ -94,8 +94,8 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 |---|---|---|---|---|---|
 | T1.1 | SplitTree per contract C2, ported from Ghostty's SplitTree.swift, with Swift Testing tests for every operation | codex | `Core/SplitTree.swift`, `Tests/KanaCoreTests/**` | none | done |
 | T1.2 | Splits in the window: SplitContainerView, a split tree per tab, ⌘D / ⌘⇧D, ⌘⌥arrows, ⌘[ ], ⌘⇧↩ zoom, ⌃⌘= equalize, drag dividers, ⌘W closes a split, dim unfocused | claude | `App/Window/*`, `App/Terminal/*`, `App/KanaApp.swift`, `Package.swift` | T1.1 contract | review (needs Jak's checklist) |
-| T1.3 | KanaConfig: Kana keys vs Ghostty passthrough, render one Ghostty config file; vendor themes | codex | `Core/KanaConfig.swift`, `Tests/KanaCoreTests/**`, `tools/themes/**`, `Resources/themes/**` | C3 | todo |
-| T1.4 | Config wiring: controller from the rendered file, `theme =`, ⌘⇧, reload, error banner | claude | `App/Terminal/*`, `App/KanaSettings.swift`, `script/build` | T1.3 | todo |
+| T1.3 | KanaConfig: Kana keys vs Ghostty passthrough, render one Ghostty config file; vendor themes | codex | `Core/KanaConfig.swift`, `Tests/KanaCoreTests/**`, `tools/themes/**`, `Resources/themes/**` | C3 | done |
+| T1.4 | Config wiring: controller from the rendered file, `theme =`, ⌘⇧, reload, error banner | claude | `App/Terminal/*`, `App/KanaSettings.swift`, `script/build` | T1.3 | review (needs Jak's checklist) |
 | T1.5 | Notifications (command finished, OSC 9/777, bell), tab attention dot + dock badge, progress bar, ⌘-click URLs + hover preview | claude | `App/Notify/*`, `App/Terminal/*`, `App/Window/*` | T1.2 | todo |
 | T1.6 | Find in scrollback: ⌘F bar, ⌘G / ⇧⌘G, ⌘E | claude | `App/Window/*`, `App/Terminal/*` | T1.2 | todo |
 | T1.7 | Quick terminal: global hotkey drop-down panel | claude | `App/Window/*`, `App/KanaApp.swift` | T1.2 | todo |
@@ -139,6 +139,12 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, codex + claude: config + themes (T1.3, T1.4).**
+  - T1.3 (codex): `KanaConfig` parses `~/.config/kana/config`. Kana's keys become fields; every other line goes to Ghostty in order. It renders one Ghostty config file. 15 tests. `tools/themes/vendor_themes.py` vendors 657 themes (MIT) from iTerm2-Color-Schemes, pinned to the 2026-09-28 release (Claude ran it; Codex's sandbox has no network).
+  - T1.4 (claude): Kana loads `~/Library/Application Support/Kana/ghostty.conf` with an empty wrapper theme (the wrapper's default Afterglow would win over the user's theme). `theme = <name>` or `light:X,dark:Y` uses bundled or `~/.config/kana/themes`. ⌘⇧, reloads live. Config problems, including Ghostty's "unknown field" diagnostics, show as a sheet.
+  - Window, header and split chrome follow the theme's background; the ink flips on light themes, and the welcome banner uses the default foreground. Checked live with Dracula, GitHub Light, and a light/dark pair.
+  - Codex review: round 1 found 3 bugs (pairs couldn't follow the system appearance, reload left banner and skin stale, a failed write reloaded the old file); round 2 found 3 edge cases (quoted commas, an explicit `background` override, quoted theme values). All fixed, the last three after the round limit.
 
 - **2026-09-30, codex + claude: splits (T1.1, T1.2).**
   - T1.1 (codex): `Core/SplitTree.swift` in a new `KanaCore` target, ported from Ghostty's SplitTree. 22 Swift Testing tests. Round 1 fixed spatial focus: it skipped a nearer split because it ranked overlap above distance, and the contract wording caused it.
