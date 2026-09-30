@@ -73,6 +73,10 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 
 `Core/FuzzyMatch.swift` (`FuzzyMatch.match(_:in:)`, `FuzzyRanker.rank`) and `App/Palette/PaletteCommand.swift` (`PaletteCommand { id, title, subtitle?, shortcut?, run }`) hold the API as stubs with doc comments. T1.8 builds `CommandPaletteView(commands:onDismiss:)` on them; T1.9 supplies the commands and hosts the view.
 
+### C5: Sessions (KanaCore)
+
+`Core/Session.swift` holds the API as stubs with doc comments: `SessionLayout` (a pane, or a split of two layouts, convertible to and from `SplitTree`), `SessionTab`, `SessionWindow`, `Session` (id per run, `summary` for the history list), and `SessionStore` (one JSON file per session: save, list, delete, keep 30). T1.10 implements it; T1.11 saves and restores from the app.
+
 ---
 
 ## Phase 0: Engine spike
@@ -105,6 +109,8 @@ The split layout of one tab: a pure value type in `Core/SplitTree.swift`. **The 
 | T1.7 | Quick terminal: global hotkey drop-down panel | claude | `App/Window/*`, `App/KanaApp.swift` | T1.2 | todo |
 | T1.8 | FuzzyMatch + CommandPaletteView (SwiftUI) per C4 | codex | `Core/FuzzyMatch.swift`, `App/Palette/**`, `Tests/KanaCoreTests/**` | C4 | done |
 | T1.9 | Palette commands for every action, theme switching, ⌘⇧K / ⌘⇧P | claude | `App/KanaApp.swift`, `App/Window/*` | T1.8 | review (needs Jak's checklist) |
+| T1.10 | Sessions per contract C5: layout ↔ SplitTree, summaries, a JSON store with pruning, Swift Testing tests | codex | `Core/Session.swift`, `Tests/KanaCoreTests/**` | C5 | doing |
+| T1.11 | Session history in the app: save each run as you go and on quit, ⌘⇧O history list (restore a session), ⌘⇧T reopen closed tab | claude | `App/**` | T1.10 contract | doing |
 
 ## Side quest: intro assets (Jak)
 
