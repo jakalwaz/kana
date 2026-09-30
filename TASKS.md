@@ -70,7 +70,7 @@ Rules: validate that every frame has `height` rows of exactly `width` characters
 | T0.5 | `script/build`, `script/test`, `script/run`: build with SwiftPM into `build/Kana.app`, run Swift, zsh and Python tests, launch the app | codex → claude | `script/*` | none | review |
 | T0.6 | KanaSkins package per contract C1, with unit tests covering good files, stills, bad JSON, wrong row width, wrong color length, portrait clamping | codex → claude | `Packages/KanaSkins/**` | none | review |
 | T0.7 | pytest suite for `convert.py`: generate a synthetic clip and image in a temp dir, check convert, portrait options, crop, no-color, and error cases | codex | `tools/ascii/tests/**` | none | done |
-| T0.8 | Original default skin: `tools/ascii/make_default_skin.py` draws a simple original animation (a red light streak sliding in and coming to rest, no copyrighted imagery) straight to frames, and writes `Resources/skins/default/intro.kana`, `portrait.kana` and `skin.json` | codex | `tools/ascii/make_default_skin.py`, `Resources/skins/default/**` | none | doing |
+| T0.8 | Original default skin: `tools/ascii/make_default_skin.py` draws a simple original animation (a red light streak sliding in and coming to rest, no copyrighted imagery) straight to frames, and writes `Resources/skins/default/intro.kana`, `portrait.kana` and `skin.json` | codex | `tools/ascii/make_default_skin.py`, `Resources/skins/default/**` | none | review (needs Jak's look) |
 
 **Phase 0 done when:** nvim, htop and Claude Code run in Kana with no visual glitches (Jak checks), KanaSkins tests pass, and `script/test` runs everything.
 
@@ -110,6 +110,11 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 ## Done log
 
 _(newest first)_
+
+- **2026-09-30, codex → claude: T0.8 default skin.**
+  - `tools/ascii/make_default_skin.py` draws a red light sliding in on a cubic ease-out and settling, analytically (no source media, no randomness, byte-identical runs). It writes `Resources/skins/default/` at 108×26, 48 frames at 20 fps (693 KB).
+  - Two review rounds. First, the light rested flush right because the banner trims columns blank in every frame, so now it rests centred and fills the grid. Second, the fix had shrunk the grid to 48×16, which the banner upscaled into doubled characters, so the geometry now scales to 108 wide.
+  - Nit, not done: above ~120 columns the banner upscales and repeats some rows. The generator could also write `intro-<w>.kana` at several widths like the Akira skin.
 
 - **2026-09-30, codex → claude: T0.7 convert.py tests.**
   - `tools/ascii/tests/`: 40 pytest tests through the real argparse entry point, on a generated 64×48 clip and still: the C1 rules for every ramp, sampling (fps, duration, start, max frames), portrait index and time plus clamping, grid size, crop and push-in, no-color, `info`, and error exits.
