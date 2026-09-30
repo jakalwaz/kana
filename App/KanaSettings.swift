@@ -5,7 +5,8 @@ import Foundation
 struct KanaSettings: Sendable {
     enum IntroMode: String, Sendable { case on, off, firstWindow = "first-window" }
 
-    var skin = "akira"
+    /// A skin folder name; "default" ships in the app bundle.
+    var skin = "default"
     var intro = IntroMode.on
     var banner = true
     var suggestions = true

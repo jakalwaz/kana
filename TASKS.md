@@ -111,6 +111,10 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 
 _(newest first)_
 
+- **2026-09-30, claude: the bundled default skin is the default.**
+  - `skin` now defaults to `default`. The app and `kana` fall back to it when the configured skin is missing, so a fresh clone plays an intro. Jak's `~/.config/kana/config` now has `skin = akira`.
+  - Reviewed by Codex in two rounds. It found that `kana` run from PATH resolved `argv[0]` against the working directory; it now uses `Bundle.main.executableURL`. Checked from `/tmp` with a missing skin name.
+
 - **2026-09-30, codex → claude: T0.8 default skin.**
   - `tools/ascii/make_default_skin.py` draws a red light sliding in on a cubic ease-out and settling, analytically (no source media, no randomness, byte-identical runs). It writes `Resources/skins/default/` at 108×26, 48 frames at 20 fps (693 KB).
   - Two review rounds. First, the light rested flush right because the banner trims columns blank in every frame, so now it rests centred and fills the grid. Second, the fix had shrunk the grid to 48×16, which the banner upscaled into doubled characters, so the geometry now scales to 108 wide.

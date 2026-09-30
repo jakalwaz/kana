@@ -39,18 +39,28 @@ func write(_ s: String) {
 }
 
 /// The active skin's folder: KANA_SKIN_DIR from the app, else `skin = ` in
-/// the config.
+/// the config, looked up like the app does (config skins, then the bundled
+/// ones beside this binary in Kana.app/Contents/Resources), falling back to
+/// the bundled `default`.
 func skinDirectory() -> URL {
     if let dir = env["KANA_SKIN_DIR"] { return URL(fileURLWithPath: dir) }
     let config = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/kana")
-    var name = "akira"
+    var name = "default"
     if let text = try? String(contentsOf: config.appendingPathComponent("config"), encoding: .utf8) {
         for line in text.split(whereSeparator: \.isNewline) {
             let parts = line.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
             if parts.count == 2, parts[0] == "skin" { name = parts[1] }
         }
     }
-    return config.appendingPathComponent("skins/\(name)")
+    // argv[0] is just "kana" when run from PATH; the bundle knows the real path
+    let executable = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
+    let bundled = executable.resolvingSymlinksInPath()
+        .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("skins")
+    let roots = [config.appendingPathComponent("skins"), bundled]
+    let names = name == "default" ? ["default"] : [name, "default"]
+    let candidates = names.flatMap { name in roots.map { $0.appendingPathComponent(name) } }
+    return candidates.first { FileManager.default.fileExists(atPath: $0.appendingPathComponent("skin.json").path) }
+        ?? config.appendingPathComponent("skins/\(name)")
 }
 
 struct SkinParts {

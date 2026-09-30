@@ -1,7 +1,8 @@
 import AppKit
 
 /// Finds the active skin folder: `skin = <name>` in the config, looked up in
-/// ~/.config/kana/skins/, then the app's bundled skins. The app only needs
+/// ~/.config/kana/skins/, then the app's bundled skins, falling back to
+/// the bundled `default`. The app only needs
 /// the folder and the accent colour; the `kana` command loads the clips.
 struct SkinInfo: Sendable {
     let directory: URL
@@ -16,14 +17,16 @@ enum SkinManager {
     static func find(settings: KanaSettings) -> SkinInfo? {
         if let cache { return cache }
         var found: SkinInfo?
-        for root in searchRoots {
-            let dir = root.appendingPathComponent(settings.skin)
+        // A missing or misspelt skin falls back to the bundled default.
+        let names = settings.skin == "default" ? ["default"] : [settings.skin, "default"]
+        let candidates = names.flatMap { name in searchRoots.map { $0.appendingPathComponent(name) } }
+        for dir in candidates {
             let manifest = dir.appendingPathComponent("skin.json")
             guard let data = try? Data(contentsOf: manifest),
                   let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             else { continue }
             let accent = (json["accent"] as? String).flatMap { NSColor(hex: $0) != nil ? $0 : nil } ?? settings.accentHex
-            found = SkinInfo(directory: dir, name: (json["name"] as? String) ?? settings.skin, accentHex: accent)
+            found = SkinInfo(directory: dir, name: (json["name"] as? String) ?? dir.lastPathComponent, accentHex: accent)
             break
         }
         cache = .some(found)
