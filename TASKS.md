@@ -150,6 +150,8 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 
 _(newest first)_
 
+- **2026-10-04, claude: nano and vim over ssh (Jak hit it in a lab).** `TERM=xterm-ghostty` travelled over ssh to a server with no terminfo for it ("cannot initialize terminal type"). libghostty-spm's rewritten shell integration doesn't implement Ghostty's `ssh-env`, so kana.zsh now does: `ssh` sends `TERM=xterm-256color`, and `sudo` keeps `TERMINFO` (it dropped it, so `sudo nano` broke locally too). The user's own ssh/sudo alias or function wins. Tested with a fake ssh in an interactive zsh.
+
 - **2026-09-30, codex + claude: session history (T1.10, T1.11), replacing macOS's "reopen windows?" prompt.**
   - T1.10 (codex): `Core/Session.swift`: layout ↔ SplitTree, per-run ids, history summaries ("Today 14:02 · 2 windows · 5 tabs" plus folders), and a JSON store keeping 30. 18 tests.
   - T1.11 (claude): each run saves to `~/Library/Application Support/Kana/sessions/` every 15 s when changed, on window and last-tab close, and on quit. ⌘⇧O lists earlier runs in the palette and opens the one you pick; ⌘⇧T reopens the last closed tab (splits, folders, focus, zoom). Scrollback isn't restored (Ghostty doesn't keep it).

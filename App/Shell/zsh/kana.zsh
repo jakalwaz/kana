@@ -211,6 +211,22 @@ if (( ! ${+functions[_zsh_autosuggest_start]} )); then
     unset _kana_map
 fi
 
+# ---------------------------------------------------------------- ssh and sudo
+
+# Kana's TERM is xterm-ghostty. Its description lives in Kana.app (TERMINFO),
+# so it works here, but not on servers you ssh into ("cannot initialize
+# terminal type": nano, vim, htop), and sudo drops TERMINFO. Like Ghostty's
+# ssh-env feature: ssh gets xterm-256color, which every server knows, and
+# sudo keeps TERMINFO. Your own ssh / sudo alias or function wins.
+if [[ "$TERM" == xterm-ghostty ]]; then
+    if (( ! $+functions[ssh] && ! $+aliases[ssh] )); then
+        ssh() { TERM=xterm-256color command ssh "$@" }
+    fi
+    if [[ -n "$TERMINFO" ]] && (( ! $+functions[sudo] && ! $+aliases[sudo] )); then
+        sudo() { command sudo --preserve-env=TERMINFO "$@" }
+    fi
+fi
+
 # ---------------------------------------------------------------- tab title
 
 # The folder at a prompt, the command while it runs. Kana's tabs show it.
