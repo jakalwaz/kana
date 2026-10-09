@@ -18,8 +18,9 @@ integer pass=0 fail=0
 # output (escape codes stripped, unless "raw")
 check() {
     local home=$TMP/home
-    rm -rf $home; mkdir -p "$home/some folder" $home/projects
-    print ': 1700000000:0;echo kana-history-test-123' > $home/.zsh_history
+    rm -rf $home; mkdir -p "$home/some folder" $home/projects $home/Documents/School $home/Downloads
+    # an old cd line, which a folder name must beat
+    print ': 1699999999:0;cd Documents/School\n: 1700000000:0;echo kana-history-test-123' > $home/.zsh_history
     touch $home/projects/readme-unique.md
     cd $home
     zpty t env -i KANA=1 HOME=$home TERM=xterm-256color PATH=/usr/bin:/bin ZDOTDIR=$K /bin/zsh -i
@@ -53,6 +54,10 @@ check "Tab completes when nothing shows"  $'ls projects/*\t\r'     $'\nprojects/
 check "no grey text left after running"   $'echo kana-h\r'         $'\nkana-h\r'
 check "suggestion is drawn in grey"       $'echo kana-h'           $'\e\\[90m[^\e]*history-test-123' raw
 check "first prompt isn't marked failed"  ''                       '❯'
+check "cd: folder beats an old cd line"   $'cd Doc\t\rpwd\r'      $'home/Documents\r'
+check "cd: any case, fixed on accept"     $'cd doc\t\rpwd\r'      $'home/Documents\r'
+check "cd: every folder's case fixed"     $'cd documents/sch\t\rpwd\r' $'home/Documents/School\r'
+check "cd: ~/ paths"                      $'cd ~/dow\t\rpwd\r'    $'home/Downloads\r'
 
 print "  $pass passed, $fail failed"
 (( fail == 0 ))

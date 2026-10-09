@@ -8,9 +8,17 @@
 #   Ctrl-Alt-Space toggles suggestions on and off.
 #
 #   Where suggestions come from, first match wins:
-#     1. history: the newest command that starts with what you typed
-#     2. the first word: commands, aliases, functions and builtins
-#     3. later words: files and folders (folders only after cd)
+#     - typing the first word: history, then commands, aliases, functions
+#       and builtins (the shortest, so "gi" gives "git")
+#     - typing a later word: the files and folders it starts (folders only
+#       after cd), in any case, so `cd doc` becomes `cd Documents/`; then
+#       history
+#
+# Completion
+#   macOS leaves zsh's completion system off. Kana turns it on (unless your
+#   config did, or KANA_COMPINIT=0) so Tab with no suggestion gets real
+#   completion, case-insensitive with a menu, unless you set your own
+#   completion styles.
 #
 # Prompt
 #   Only replaces the macOS default prompt. A custom PS1, or KANA_PROMPT=0,
@@ -47,28 +55,37 @@ typeset -g KANA_SUGGEST_STYLE="${KANA_SUGGEST_STYLE:-fg=8}"
 typeset -gi _kana_suggest_on=1
 [[ "${KANA_SUGGEST:-1}" == (0|off|false|no) ]] && _kana_suggest_on=0
 
-# Sets REPLY to the full suggested line (always longer than, and starting
-# with, $1), or to empty.
+# Sets REPLY to the line as it'll be once accepted, and REPLY2 to the grey
+# text shown after the cursor. Usually REPLY is $1 followed by REPLY2; a
+# path typed in the wrong case is fixed on accept ("doc" shows "uments/",
+# then becomes "Documents/"). Both are empty when there's nothing to suggest.
 _kana_suggest_for() {
     emulate -L zsh
     setopt extended_glob null_glob
     local buffer="$1"
-    REPLY=
+    REPLY= REPLY2=
     [[ -z "$buffer" || "$buffer" == *$'\n'* ]] && return
-
-    # 1. history, newest first ($history is keyed by event number and the
-    #    (r) subscript searches from the newest entry)
-    local hit="${history[(r)${(b)buffer}?*]}"
-    if [[ -n "$hit" && "$hit" != *$'\n'* ]]; then
-        REPLY="$hit"
-        return
-    fi
 
     local -a words=(${(z)buffer})
     local word="${words[-1]}"
+
+    # A later word that starts a file or folder name: complete that, before
+    # history, so `cd Doc` + Tab is `cd Documents/`, not an old cd line.
+    if (( ${#words} > 1 )) && [[ "$buffer" != *[[:space:]] ]] && _kana_suggest_path "$buffer" "$word" "${words[1]}"; then
+        return
+    fi
+
+    # history, newest first ($history is keyed by event number and the (r)
+    # subscript searches from the newest entry)
+    local hit="${history[(r)${(b)buffer}?*]}"
+    if [[ -n "$hit" && "$hit" != *$'\n'* ]]; then
+        REPLY="$hit" REPLY2="${hit:${#buffer}}"
+        return
+    fi
+
     [[ "$buffer" == *[[:space:]] ]] && return
 
-    # 2. first word: the shortest command that fits, so "gi" gives "git"
+    # first word: the shortest command that fits, so "gi" gives "git"
     if (( ${#words} == 1 )); then
         local -a names=(
             ${(M)${(k)commands}:#${(b)word}?*}
@@ -84,23 +101,48 @@ _kana_suggest_for() {
                 best="$name"
             fi
         done
-        REPLY="$best"
+        REPLY="$best" REPLY2="${best:${#buffer}}"
         return
     fi
+}
 
-    # 3. later words: files, or folders for cd-like commands
-    [[ "$word" == *[\\\'\"\$\`\*\?\[]* ]] && return
-    local pattern="$word"
-    [[ "$pattern" == "~"* ]] && pattern="$HOME${pattern#\~}"
+# The file or folder `word` (the last word of `buffer`) starts, folders only
+# after cd-like commands. Exact case first, then any case, since the Mac's
+# disk ignores case. Sets REPLY and REPLY2 like _kana_suggest_for.
+_kana_suggest_path() {
+    emulate -L zsh
+    setopt extended_glob null_glob
+    local buffer="$1" typed="$2" command="$3"
+    # quoted, escaped or glob words: leave them to Tab completion
+    [[ "$typed" == *[\\\'\"\$\`\*\?\[]* ]] && return 1
+    local word="$typed"
+    [[ "$word" == "~"* ]] && word="$HOME${word#\~}"
+    local base="${word##*/}"
+    [[ -n "$base" ]] || return 1             # "Documents/" alone: nothing to finish
+    local only="(N)"
+    [[ "$command" == (cd|pushd|rmdir|z) ]] && only="(N-/)"
+    # exact case first; then any case for the whole path, which hands back
+    # each folder's real name ("documents/sch" -> "Documents/School")
     local -a found
-    case "${words[1]}" in
-        (cd|pushd|rmdir|z) found=(${~${(b)pattern}}*(N-/)) ;;
-        (*) found=(${~${(b)pattern}}*(N)) ;;
-    esac
-    (( ${#found} )) || return
-    local rest="${found[1]:${#pattern}}"
-    [[ -d "${found[1]}" ]] && rest+="/"
-    [[ -n "$rest" ]] && REPLY="$buffer${rest// /\\ }"
+    found=(${~${(b)word}}*${~only})
+    (( ${#found} )) || found=((#i)${~${(b)word}}*${~only})
+    (( ${#found} )) || return 1
+    local path_="${found[1]}"
+    local name="${path_##*/}"
+    local isdir=0
+    [[ -d "$path_" ]] && isdir=1
+    (( isdir )) && path_+="/"
+    # nothing left to add: a file typed in full, or a folder already ending in /
+    [[ "${path_:l}" == "${word:l}" ]] && return 1
+    # the grey text: what's after the typed name in the real one
+    local rest="${name:${#base}}"
+    (( isdir )) && rest+="/"
+    # the word as accepted: the real path, written the way it was typed (~)
+    local fixed="$path_"
+    [[ "$typed" == "~"* && "$fixed" == "$HOME"* ]] && fixed="~${fixed#$HOME}"
+    REPLY="${buffer[1,${#buffer}-${#typed}]}${fixed// /\\ }"
+    REPLY2="${rest// /\\ }"
+    return 0
 }
 
 _kana_suggest_clear() {
@@ -115,8 +157,9 @@ _kana_suggest_show() {
     (( CURSOR == ${#BUFFER} )) || return
     [[ -z "$PREDISPLAY" && "$KEYMAP" != (vicmd|isearch) ]] || return
     _kana_suggest_for "$BUFFER"
-    [[ -n "$REPLY" ]] || return
-    POSTDISPLAY="${REPLY:${#BUFFER}}"
+    [[ -n "$REPLY2" ]] || return
+    _kana_suggest_line="$REPLY"
+    POSTDISPLAY="$REPLY2"
     region_highlight+=("${#BUFFER} $(( ${#BUFFER} + ${#POSTDISPLAY} )) $KANA_SUGGEST_STYLE memo=kana-suggest")
 }
 
@@ -138,14 +181,42 @@ _kana_on_line_finish() {
     zle -R 2>/dev/null
 }
 
+# The line a shown suggestion turns into: usually the buffer plus the grey
+# text, but with a path's case fixed ("doc" -> "Documents/").
+typeset -g _kana_suggest_line=
+
 _kana_accept() {
     [[ -n "$POSTDISPLAY" ]] || return 1
-    BUFFER+="$POSTDISPLAY"
+    BUFFER="$_kana_suggest_line"
     CURSOR=${#BUFFER}
     _kana_suggest_clear
     _kana_last_buffer="$BUFFER"
     return 0
 }
+
+# ---------------------------------------------------------------- completion
+
+# macOS ships zsh with its completion system off, so Tab could only do the
+# basics. Turn it on unless the user's config already did, or KANA_COMPINIT=0.
+_kana_completion() {
+    if (( ! ${+_comps} )) && [[ "${KANA_COMPINIT:-1}" != (0|off|false|no) ]]; then
+        builtin autoload -Uz compinit
+        local dump="${XDG_CACHE_HOME:-$HOME/.cache}/kana/zcompdump-$ZSH_VERSION"
+        [[ -d "${dump:h}" ]] || mkdir -p "${dump:h}"
+        # -i: skip insecure folders quietly instead of asking at every prompt
+        compinit -i -d "$dump"
+    fi
+    # Any case ("doc" finds Documents), then partial words ("d-k" finds
+    # docker-compose), and a menu you can arrow through. Only when the
+    # user's config has no completion styles of its own.
+    if [[ -z "$(zstyle -L ':completion:*' 2>/dev/null)" ]]; then
+        zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*'
+        zstyle ':completion:*' menu select
+        zstyle ':completion:*' list-colors ''
+    fi
+}
+_kana_completion
+unfunction _kana_completion
 
 # What Tab did before we took it over (expand-or-complete by default, or
 # whatever the user's config bound, like fzf-completion).
@@ -166,7 +237,10 @@ _kana_end_of_line() {
 
 _kana_forward_word() {
     setopt localoptions extended_glob
-    if (( CURSOR == ${#BUFFER} )) && [[ -n "$POSTDISPLAY" ]]; then
+    # a case fix rewrites the word, so take it whole
+    if (( CURSOR == ${#BUFFER} )) && [[ -n "$POSTDISPLAY" && "$_kana_suggest_line" != "$BUFFER$POSTDISPLAY" ]]; then
+        _kana_accept
+    elif (( CURSOR == ${#BUFFER} )) && [[ -n "$POSTDISPLAY" ]]; then
         # take up to and including the next word of the suggestion
         local rest="$POSTDISPLAY"
         local take="${(M)rest##[[:space:]]#[^[:space:]]##}"
