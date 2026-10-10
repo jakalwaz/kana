@@ -150,6 +150,11 @@ Things for Jak. Format: `task: question, option A (who), option B (who)`.
 
 _(newest first)_
 
+- **2026-10-10, claude: the bike is the default skin, repo goes public.**
+  - Jak's call: the Akira skin's ASCII frames (13 widths) are now `Resources/skins/default`. The original red streak moved to `Resources/skins/streak`, and `make_default_skin.py` now writes there.
+  - Source clips stay out of git (`assets/private/`, `*.mp4`). The risk, a DMCA takedown of the repo, is written down in docs/KANA.md section 7.
+  - New README with framed screenshots in `docs/images/`. They come from the app itself, via a new `KANA_CONFIG_DIR` override so they can be taken without touching Jak's config.
+
 - **2026-10-04, claude: nano and vim over ssh (Jak hit it in a lab).** `TERM=xterm-ghostty` travelled over ssh to a server with no terminfo for it ("cannot initialize terminal type"). libghostty-spm's rewritten shell integration doesn't implement Ghostty's `ssh-env`, so kana.zsh now does: `ssh` sends `TERM=xterm-256color`, and `sudo` keeps `TERMINFO` (it dropped it, so `sudo nano` broke locally too). The user's own ssh/sudo alias or function wins. Tested with a fake ssh in an interactive zsh.
 
 - **2026-09-30, codex + claude: session history (T1.10, T1.11), replacing macOS's "reopen windows?" prompt.**

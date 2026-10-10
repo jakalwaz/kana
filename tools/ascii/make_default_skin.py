@@ -26,7 +26,7 @@ TRAIL_SECONDS = 0.22
 ACCENT = "#e0262f"
 # Same standard density ramp as convert.py; importing it would require OpenCV.
 RAMP = " .:-=+*#%@"
-DEFAULT_OUT = Path(__file__).resolve().parents[2] / "Resources/skins/default"
+DEFAULT_OUT = Path(__file__).resolve().parents[2] / "Resources/skins/streak"
 
 
 def position(seconds):
@@ -94,7 +94,7 @@ def clip(frames, fps):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT,
-                        help="output skin directory (default: Resources/skins/default)")
+                        help="output skin directory (default: Resources/skins/streak)")
     args = parser.parse_args()
     output = args.out.expanduser()
     output.mkdir(parents=True, exist_ok=True)
@@ -104,7 +104,7 @@ def main():
         "intro.kana": clip(frames, FPS),
         "portrait.kana": clip([frames[-1]], 0),
         "skin.json": {
-            "name": "Default",
+            "name": "Streak",
             "accent": ACCENT,
             "intro": "intro.kana",
             "portrait": "portrait.kana",

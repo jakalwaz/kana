@@ -56,7 +56,7 @@ Every non-trivial change gets reviewed by the other agent before it's marked don
 ## Never commit
 
 - Anything in `assets/private/`
-- Video files or `.kana` files, except `Resources/skins/default/`
+- Video files, or `.kana` files outside `Resources/skins/` (the source clips never go in, only the shipped skins' frames)
 - API keys, tokens, `.env` files
 
 The repo is public. The `.gitignore` covers these, but check `git status` before every commit anyway.

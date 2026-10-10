@@ -5,7 +5,7 @@ assets/private/
 *.mkv
 *.webm
 *.kana
-!Resources/skins/default/*.kana
+!Resources/skins/*/*.kana
 
 # Xcode
 build/

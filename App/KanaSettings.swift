@@ -16,8 +16,12 @@ struct KanaSettings: Sendable {
     var banner: Bool { config.banner }
     var suggestions: Bool { config.suggestions }
 
+    /// `~/.config/kana`, or KANA_CONFIG_DIR when set (screenshots, tests).
     static var configDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/kana")
+        if let dir = ProcessInfo.processInfo.environment["KANA_CONFIG_DIR"], !dir.isEmpty {
+            return URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/kana")
     }
 
     static var configFile: URL { configDirectory.appendingPathComponent("config") }

@@ -166,7 +166,7 @@ assets/private/
 *.mkv
 *.webm
 *.kana
-!Resources/skins/default/*.kana
+!Resources/skins/*/*.kana
 ```
 
 ---
@@ -207,12 +207,12 @@ A skin is a folder with an intro, a portrait and an accent color:
 }
 ```
 
-Kana also ships `Resources/skins/default/`, a small original placeholder, so a fresh clone works. Pick the skin with `skin = akira` in the config or from Settings.
+Kana ships two skins in `Resources/skins/`: `default`, the Akira bike slide (the intro converted at 13 widths, `intro-<w>.kana`), and `streak`, an original red light streak drawn by `tools/ascii/make_default_skin.py`. Pick one with `skin = streak` in the config, or add your own under `~/.config/kana/skins/`.
 
 ### Clip rules
-- The Akira clip and the frames made from it are copyrighted. They stay in `assets/private/` and `~/.config/kana/skins/`, never in the repo
-- Only the default placeholder skin gets committed
-- If I ever ship builds to other people, only the default skin goes with them
+- The source clips (`.mp4` and the like) never go in the repo. They stay in `assets/private/`
+- The ASCII frames of the Akira skin are committed as the default skin. Jak's call (2026-10-10): a non-commercial fan project, accepting that the rights holder could ask GitHub to take it down. If that happens, `streak` becomes the default again
+- Skins made from other copyrighted clips stay in `~/.config/kana/skins/`
 
 ### Picking and trimming the Akira clip
 - Start just before the slide begins and end once Kaneda is fully standing, so the last frame is a clean pose
